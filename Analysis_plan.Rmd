@@ -1,0 +1,32 @@
+---
+title: "Analysis plan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The structure of the dataset
+
+- We have five populations. In each population, there is a variable number of samples of different plants, and a varying number of samples per plant.
+
+  + *Issue*: We need to decide how to handle these repeated and variable measurements. Is repeatability something we want to directly test for? If so, that would argue for running some kind of analysis to look at the variability within and between plants. If not, we could either cull the dataset to one sample per plant, or we could keep all of the replicates in the dataset, if we can use random effects to account for that source of variance.
+
+- A sample is a single flower from a given plant that was sampled on a given day. For each sample, we have scent measurements, and we have morphometric measurements.
+
+  + *Issue*: A number of the morphological measurements are highly correlated with each other. This could be fine for the purposes of ordination, but less fine for other kinds of testing.
+
+  + *Issue*: Sometimes we are missing some of the morphological measurements. Need to figure out how ordination methods deal with missing data.
+
+## Questions
+
+- Is constrained vs. non-constrained ordination more appropriate?
+
+- What are the variables that we are analyzing? Morphology, total scent, emission rates.
+
+- It seems like the overall premise is to test if variation in floral traits is A. related to variation in pollinators, B. clinal, or C. neither.
+
+
+
+
