@@ -12,6 +12,18 @@ library(tidyverse)
 library(readxl)
 ```
 
+What do we need before doing this?
+
+- File 1: An excel file of peak areas with a column of the compounds, and then a column for each sample. This does not include the toluene peak areas.
+  + Check the compound names to make sure there are no duplicates and no spaces in the names
+  + Put `Samp.` in front of all sample names to facilitate filtering/mutating
+  + Put `Comp.` in front of all compound names to facilitate filtering/mutating
+  + After `Comp.`, can use some kind of code in the compound names to assign compounds to a certain class or group. This would be useful for downstream steps where there's a need to pull out only compounds of some classes and mutate/work with them.
+  
+- File 2: An excel file of the meta-data with the following columns: `Sample_ID`, `Toluene_Area`, `Toluene_Amt`, `Sample_Vol`, `No_Hours`, `No_Flowers`, `Fresh_Mass`, `Dry.Mass`
+  + `Sample_ID` values should match the column names associated with the samples in File 1.
+
+
 Read in data with compounds in rows and samples as columns
 
 ```{r}
@@ -23,14 +35,33 @@ dummy1<-dummy1 %>% mutate_all(~replace(.,is.na(.), 0))
 Try to generate column sums, and save them back to the object in a new row:
 ```{r}
 Totals<-dummy1 %>% 
-  bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Total"))) %>% 
-  pivot_longer(cols=starts_with("r"),names_to="Sample_ID") %>% 
+  bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Comp.Total"))) %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
   pivot_wider(names_from=Compound, values_from = value)
-
 
 ```
 
-Now loading in the ID information:
+Creating relative amounts data frame:
+
+```{r}
+
+percent <- function(x) { round((x/sum(x)) * 100, digits=3)
+  
+}
+
+Percents<-dummy1 %>% 
+  mutate_at(vars(starts_with("r")), percent)
+
+Percents_wide <- Percents %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compound, values_from = value)
+
+```
+
+
+
+
+Now loading in the ID information, to be able to calculate emission rates
 ```{r}
 
 #this has the information we need for doing the calculations
@@ -53,18 +84,17 @@ ER_Dm<-function(Total.Samp, Hrs, Dr.Mass) {
   Total.Samp/Hrs/Dr.Mass
 }
 
-# This code joins the data with the relevant meta data
-dummy_wide<-Totals %>%  full_join(dummy2) %>% 
-  mutate(Total_Sample=T_S(Total, `toluene area`,`toluene amt`, `sample vol`), ER_flower=ER_Fl(Total_Sample,`no hours`, `no flowers`), ER_fresh=ER_Fm(Total_Sample, `no hours`, `fresh mass`), ER_dry=ER_Dm(Total_Sample, `no hours`, `dry mass`))
+Total_Samples<-Totals %>%  full_join(dummy2) %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~T_S(.,Toluene_Area,Toluene_Amt, Sample_Vol))) 
 
+ER_flowers<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Fl(.,No_Hours, No_Flowers))) 
 
+ER_f_mass<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Fm(.,No_Hours, Fresh_Mass))) 
 
-
-
-dummy_wide<-Totals %>%  full_join(dummy2) %>% 
-  mutate_at(c(2:39), Total_Sample=(Total/`toluene area`*`toluene amt`*`sample vol`), ER_flower=Total_Sample/`no hours`/`no flowers`, ER_fresh=Total_Sample/`no hours`/`fresh mass`, ER_dry=Total_Sample/`no hours`/`dry mass`)
-
-## figure out how to apply this mutation to all of the relevant columns
+ER_d_mass<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Dm(.,No_Hours, Dry_Mass))) 
 
 ```
 
