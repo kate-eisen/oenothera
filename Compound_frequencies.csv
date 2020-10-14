@@ -1,0 +1,12 @@
+Position,Column,Description
+A,Compound,Compound names
+B,Arizona,Number of samples from Arizona that contained that compound
+C,Idaho,Number of samples from Idaho that contained that compound
+D,Inyo,Number of samples from Inyo that contained that compound
+E,Logan,Number of samples from Logan that contained that compound
+F,Zion,Number of samples from Zion that contained that compound
+G,Arizona.per,Percentage of samples from Arizona that contained that compound. Column B divided by 72
+H,Idaho.per,Percentage of samples from Idaho that contained that compound. Column C divided by 13
+I,Inyo.per,Percentage of samples from Inyo that contained that compound. Column D divided by 25
+J,Logan.per,Percentage of samples from Logan that contained that compound. Column E divided by 45
+K,Zion.per,Percentage of samples from Zion that contained that compound. Column F divided by 13

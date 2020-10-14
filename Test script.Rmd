@@ -24,20 +24,33 @@ What do we need before doing this?
   + `Sample_ID` values should match the column names associated with the samples in File 1.
 
 
-Read in data with compounds in rows and samples as columns
+Read in data with compounds in rows and samples as columns. Also read in the meta data file
 
 ```{r}
-dummy1<-readxl::read_excel("dummy1.xlsx", na="0")
-dummy1<-dummy1 %>% mutate_all(~replace(.,is.na(.), 0))
+file1<-readxl::read_excel("Scent_Full.xlsx", na="0")
+file1_rare<-readxl::read_excel("Scent_Rare.xlsx", na="0")
+file1<-file1 %>% mutate_all(~replace(.,is.na(.), 0))
+file1_rare<-file1_rare %>% mutate_all(~replace(.,is.na(.), 0))
+
+file2<-readxl::read_excel("Scent_Meta.xlsx")
+
+file3<-readxl::read_excel("Morph_Full.xlsx")
+
 ```
 
 
 Try to generate column sums, and save them back to the object in a new row:
 ```{r}
-Totals<-dummy1 %>% 
+
+Totals<-file1 %>% 
   bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Comp.Total"))) %>% 
   pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
-  pivot_wider(names_from=Compound, values_from = value)
+  pivot_wider(names_from=Compounds, values_from = value)
+
+Totals_rare<-file1_rare %>% 
+  bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Comp.Total"))) %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compounds, values_from = value)
 
 ```
 
@@ -46,26 +59,23 @@ Creating relative amounts data frame:
 ```{r}
 
 percent <- function(x) { round((x/sum(x)) * 100, digits=3)
-  
 }
 
-Percents<-dummy1 %>% 
-  mutate_at(vars(starts_with("r")), percent)
+Percents<-file1 %>% 
+  mutate_at(vars(starts_with("Samp.")), percent)
 
 Percents_wide <- Percents %>% 
   pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
-  pivot_wider(names_from=Compound, values_from = value)
+  pivot_wider(names_from=Compounds, values_from = value) %>% 
+  full_join(file2)
 
 ```
 
 
 
 
-Now loading in the ID information, to be able to calculate emission rates
+Now using the ID information, to be able to calculate emission rates
 ```{r}
-
-#this has the information we need for doing the calculations
-dummy2<-readxl::read_excel("dummy2.xlsx")
 
 #These functions specify how to calculate what we want: total scent in the sample, and emission rates per flower, per fresh mass, and per dry mass:
 T_S<-function(Column, Tol.Area, Tol.Amt, Samp.Vol) {
@@ -84,13 +94,20 @@ ER_Dm<-function(Total.Samp, Hrs, Dr.Mass) {
   Total.Samp/Hrs/Dr.Mass
 }
 
-Total_Samples<-Totals %>%  full_join(dummy2) %>% 
+Total_Samples<-Totals %>%  full_join(file2) %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~T_S(.,Toluene_Area,Toluene_Amt, Sample_Vol))) 
+
+
+Total_Samples_rare<-Totals_rare %>%  full_join(file2) %>% 
   mutate_at(vars(starts_with("Comp.")), list(~T_S(.,Toluene_Area,Toluene_Amt, Sample_Vol))) 
 
 ER_flowers<-Total_Samples %>% 
   mutate_at(vars(starts_with("Comp.")), list(~ER_Fl(.,No_Hours, No_Flowers))) 
 
 ER_f_mass<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Fm(.,No_Hours, Fresh_Mass))) 
+
+ER_f_mass_rare<-Total_Samples_rare %>% 
   mutate_at(vars(starts_with("Comp.")), list(~ER_Fm(.,No_Hours, Fresh_Mass))) 
 
 ER_d_mass<-Total_Samples %>% 
