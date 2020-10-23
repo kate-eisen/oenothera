@@ -1,5 +1,5 @@
 ---
-title: "Organized Analyses"
+title: "Oenothera preliminary analyses"
 output: github_document
 ---
 
@@ -7,58 +7,637 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Questions
+## Questions we are exploring
 
 Do floral traits vary across populations?
 
 If floral traits vary across populations, are patterns of variation clinal, associated with variation in pollinators, or random?
 
+## In this file:
+
+First, I show a number of correlation heat maps for sets of variables overall, and broken out by population.
+
+Second, I provide a list of potential variables/approaches to consider to address the questions above. I then provide the results of most of these analyses, with the caveat that results may shift slightly after we account for response factors in the scent emission data and potentially clean up some erroneous values in the morphology data.
+
+## Exploring correlations in the data
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# need the relevant code from test script in order to be able to knit this file
+
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(vegan)
+library(knitr)
+library(reshape2)
+
+file1<-readxl::read_excel("Scent_Full.xlsx", na="0")
+file1<-file1 %>% mutate_all(~replace(.,is.na(.), 0))
+
+file2<-readxl::read_excel("Scent_Meta.xlsx")
+
+file3<-readxl::read_excel("Morph_Full.xlsx")
+
+Totals<-file1 %>% 
+  bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Comp.Total"))) %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compounds, values_from = value)
+
+percent <- function(x) { round((x/sum(x)) * 100, digits=3)
+}
+
+Percents<-file1 %>% 
+  mutate_at(vars(starts_with("Samp.")), percent)
+
+Percents_wide <- Percents %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compounds, values_from = value) %>% 
+  full_join(file2)
+
+T_S<-function(Column, Tol.Area, Tol.Amt, Samp.Vol) {
+  Column/Tol.Area*Tol.Amt*Samp.Vol
+} 
+
+ER_Fm<-function(Total.Samp, Hrs, Fr.Mass) {
+  Total.Samp/Hrs/Fr.Mass
+}
+
+Total_Samples<-Totals %>%  full_join(file2) %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~T_S(.,Toluene_Area,Toluene_Amt, Sample_Vol))) 
+
+ER_f_mass<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Fm(.,No_Hours, Fresh_Mass))) 
+
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+
+```
+
+### Heatmaps of correlations of scent by compound
+
+```{r}
+Arizona <- ER_f_mass %>% filter(Population=="Arizona") %>%  select(starts_with("Comp."))
+Zion <- ER_f_mass %>% filter(Population=="Zion") %>%  select(starts_with("Comp."))
+Inyo <- ER_f_mass %>% filter(Population=="Inyo") %>%  select(starts_with("Comp."))
+Logan <- ER_f_mass %>% filter(Population=="Logan") %>%  select(starts_with("Comp."))
+Idaho <- ER_f_mass %>% filter(Population=="Idaho") %>%  select(starts_with("Comp."))
+
+Tol_ord <- ER_f_mass %>% 
+  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0)) %>% select(starts_with("Comp.")) %>% select(-Comp.Total)
+```
+
+#### All data: 
+``` {r}
+cormat.all <- round(cor(Tol_ord),2)
+melted_cormat.all <- melt(cormat.all)
+upper_tri.all <- get_upper_tri(cormat.all)
+# Melt the correlation matrix
+melted_cormat.all <- melt(upper_tri.all, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.all <- ggplot(melted_cormat.all, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("All data") +xlab("") +ylab("")
+ggheatmap.all
+```
+
+#### Arizona
+``` {r}
+cormat.AZ <- round(cor(Arizona),2)
+melted_cormat.AZ <- melt(cormat.AZ)
+upper_tri.AZ <- get_upper_tri(cormat.AZ)
+# Melt the correlation matrix
+melted_cormat.AZ <- melt(upper_tri.AZ, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.AZ <- ggplot(melted_cormat.AZ, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Arizona") +xlab("") +ylab("")
+ggheatmap.AZ
+```
+
+#### Zion
+``` {r}
+cormat.ZI <- round(cor(Zion),2)
+melted_cormat.ZI <- melt(cormat.ZI)
+upper_tri.ZI <- get_upper_tri(cormat.ZI)
+# Melt the correlation matrix
+melted_cormat.ZI <- melt(upper_tri.ZI, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.ZI <- ggplot(melted_cormat.ZI, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Zion") +xlab("") +ylab("")
+ggheatmap.ZI
+```
+
+#### Inyo
+``` {r}
+cormat.IN <- round(cor(Inyo),2)
+melted_cormat.IN <- melt(cormat.IN)
+upper_tri.IN <- get_upper_tri(cormat.IN)
+# Melt the correlation matrix
+melted_cormat.IN <- melt(upper_tri.IN, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.IN <- ggplot(melted_cormat.IN, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Inyo") +xlab("") +ylab("")
+ggheatmap.IN
+```
+
+#### Logan
+``` {r}
+cormat.LO <- round(cor(Logan),2)
+melted_cormat.LO <- melt(cormat.LO)
+upper_tri.LO <- get_upper_tri(cormat.LO)
+# Melt the correlation matrix
+melted_cormat.LO <- melt(upper_tri.LO, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.LO <- ggplot(melted_cormat.LO, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Logan") +xlab("") +ylab("")
+ggheatmap.LO 
+```
+
+#### Idaho
+``` {r}
+cormat.ID <- round(cor(Idaho),2)
+melted_cormat.ID <- melt(cormat.ID)
+upper_tri.ID <- get_upper_tri(cormat.ID)
+# Melt the correlation matrix
+melted_cormat.ID <- melt(upper_tri.ID, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.ID <- ggplot(melted_cormat.ID, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Idaho") +xlab("") +ylab("")
+ggheatmap.ID
+```
+
+
+### Heatmaps of correlations of scent by compound group
+
+These are the groupings of the compounds:
+
+| Code | Compounds
+| :--- | :--------
+| G.ILE | 2 methylbuyronitrile, nitro-2-methyl butane, cis-2-methylbutyraldoxime, trans-2-methylbutyraldoxime, 2methylbutyl benzoate
+| G.LEU | 3methylbutyronitrile, nitro-3-methyl-butane, cis-3-methylbutyraldoxime, trans-3-methylbutyraldoxime
+| G.VAL | cis-isobutyraldoxime, trans-isobutyraldoxime
+| G.PHE | 2phenylethanol, phenylacetonitrile, nitrophenylethane, phenylacetaldoxime
+| G.OCI | b-myrcene, cis-b-ocimene, trans-b-ocimene, alpha-terpineol
+| G.GER | citronellol, neral, geranial, nerol, geraniol
+| G.LIN | linalool, cis-furanoid-linalool-oxide, trans-furanoid-linalool-oxide, pyran-lin-oxide-ketone, cis-pyranoid-linalool-oxide, trans-pyranoid-linalool-oxide
+| G.CAR | beta-caryophyllene, alpha-humulene, caryophyllene-oxide
+| G.SES | beta-farnesene, Z-E-alpha-farnesene, E-E-alpha-farnesene, farnesene-epoxide, farnesol, nerolidol, isophytol
+
+```{r, echo=FALSE}
+
+
+ER_f_mass_groups <- ER_f_mass %>% mutate(G.ILE=Comp.2methylbutyronitrile+`Comp.nitro-2-methyl-butane`+`Comp.cis-2-methylbutyraldoxime`+`Comp.trans-2-methylbutyraldoxime`+`Comp.2methylbutyl-benzoate`,
+                                         G.LEU=Comp.3methylbutyronitrile+`Comp.nitro-3-methyl-butane`+`Comp.cis-3-methylbutyraldoxime`+`Comp.trans-3-methylbutyraldoxime`,
+                                         G.VAL=`Comp.cis-isobutyraldoxime`+`Comp.trans-isobutyraldoxime`,
+                                         G.PHE=Comp.2phenylethanol+Comp.phenylacetonitrile+Comp.nitrophenylethane+Comp.phenylacetaldoxime,
+                                         G.OCI=`Comp.b-myrcene`+`Comp.cis-b-ocimene`+`Comp.trans-b-ocimene`+`Comp.alpha-terpineol`,
+                                         G.GER=Comp.citronellol+Comp.neral+Comp.geranial+Comp.nerol+Comp.geraniol,
+                                         G.LIN=Comp.linalool+`Comp.cis-furanoid-linalool-oxide`+`Comp.trans-furanoid-linalool-oxide`+`Comp.pyran-lin-oxide-ketone`+`Comp.cis-pyranoid-linalool-oxide`+`Comp.trans-pyranoid-linalool-oxide`,
+                                         G.CAR=`Comp.beta-caryophyllene`+`Comp.alpha-humulene`+`Comp.caryophyllene-oxide`,
+                                         G.SES=`Comp.beta-farnesene`+`Comp.Z-E-alpha-farnesene`+`Comp.E-E-alpha-farnesene`+`Comp.farnesene-epoxide`+Comp.farnesol+Comp.nerolidol+Comp.isophytol)
+
+ER_f_mass_group_data <- ER_f_mass_groups %>% select(starts_with("G."))
+
+ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
+ER_f_mass_groups <- ER_f_mass_groups %>% slice(.,-c(36,44))
+
+Arizona <- ER_f_mass_groups %>% filter(Population=="Arizona") %>%  select(starts_with("G."))
+Zion <- ER_f_mass_groups %>% filter(Population=="Zion") %>%  select(starts_with("G."))
+Inyo <- ER_f_mass_groups %>% filter(Population=="Inyo") %>%  select(starts_with("G."))
+Logan <- ER_f_mass_groups %>% filter(Population=="Logan") %>%  select(starts_with("G."))
+Idaho <- ER_f_mass_groups %>% filter(Population=="Idaho") %>%  select(starts_with("G."))
+
+cormat.all <- round(cor(ER_f_mass_group_data),2)
+melted_cormat.all <- melt(cormat.all)
+upper_tri.all <- get_upper_tri(cormat.all)
+# Melt the correlation matrix
+melted_cormat.all <- melt(upper_tri.all, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.all <- ggplot(melted_cormat.all, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("All data") +xlab("") +ylab("")
+
+cormat.AZ <- round(cor(Arizona),2)
+melted_cormat.AZ <- melt(cormat.AZ)
+upper_tri.AZ <- get_upper_tri(cormat.AZ)
+# Melt the correlation matrix
+melted_cormat.AZ <- melt(upper_tri.AZ, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.AZ <- ggplot(melted_cormat.AZ, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Arizona") +xlab("") +ylab("")
+
+cormat.ZI <- round(cor(Zion),2)
+melted_cormat.ZI <- melt(cormat.ZI)
+upper_tri.ZI <- get_upper_tri(cormat.ZI)
+# Melt the correlation matrix
+melted_cormat.ZI <- melt(upper_tri.ZI, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.ZI <- ggplot(melted_cormat.ZI, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Zion") +xlab("") +ylab("")
+
+cormat.IN <- round(cor(Inyo),2)
+melted_cormat.IN <- melt(cormat.IN)
+upper_tri.IN <- get_upper_tri(cormat.IN)
+# Melt the correlation matrix
+melted_cormat.IN <- melt(upper_tri.IN, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.IN <- ggplot(melted_cormat.IN, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Inyo") +xlab("") +ylab("")
+
+cormat.LO <- round(cor(Logan),2)
+melted_cormat.LO <- melt(cormat.LO)
+upper_tri.LO <- get_upper_tri(cormat.LO)
+# Melt the correlation matrix
+melted_cormat.LO <- melt(upper_tri.LO, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.LO <- ggplot(melted_cormat.LO, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Logan") +xlab("") +ylab("")
+
+cormat.ID <- round(cor(Idaho),2)
+melted_cormat.ID <- melt(cormat.ID)
+upper_tri.ID <- get_upper_tri(cormat.ID)
+# Melt the correlation matrix
+melted_cormat.ID <- melt(upper_tri.ID, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.ID <- ggplot(melted_cormat.ID, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("Idaho") +xlab("") +ylab("")
+
+ggarrange(ggheatmap.all, ggheatmap.AZ, ggheatmap.IN, ggheatmap.ZI, ggheatmap.LO, ggheatmap.ID, nrow=2, ncol=3, common.legend = TRUE, legend = "bottom")
+
+```
+
+### Heatmaps of morphology
+
+```{r}
+
+Arizona <- file3 %>% filter(Population=="Arizona") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Zion <- file3 %>% filter(Population=="Zion") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Inyo <- file3 %>% filter(Population=="Inyo") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Logan <- file3 %>% filter(Population=="Logan") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Idaho <- file3 %>% filter(Population=="Idaho") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+morph <- file3 %>% filter(Population!="NA") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+
+
+cormat.all <- round(cor(morph),2)
+melted_cormat.all <- melt(cormat.all)
+upper_tri.all <- get_upper_tri(cormat.all)
+# Melt the correlation matrix
+melted_cormat.all <- melt(upper_tri.all, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.all <- ggplot(melted_cormat.all, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("All data") +xlab("") +ylab("")
+
+cormat.AZ <- round(cor(Arizona),2)
+melted_cormat.AZ <- melt(cormat.AZ)
+upper_tri.AZ <- get_upper_tri(cormat.AZ)
+melted_cormat.AZ <- melt(upper_tri.AZ, na.rm = TRUE)
+ggheatmap.AZ <- ggplot(melted_cormat.AZ, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Arizona") +xlab("") +ylab("")
+
+cormat.ZI <- round(cor(Zion),2)
+melted_cormat.ZI <- melt(cormat.ZI)
+upper_tri.ZI <- get_upper_tri(cormat.ZI)
+melted_cormat.ZI <- melt(upper_tri.ZI, na.rm = TRUE)
+ggheatmap.ZI <- ggplot(melted_cormat.ZI, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Zion") +xlab("") +ylab("")
+
+cormat.IN <- round(cor(Inyo),2)
+melted_cormat.IN <- melt(cormat.IN)
+upper_tri.IN <- get_upper_tri(cormat.IN)
+melted_cormat.IN <- melt(upper_tri.IN, na.rm = TRUE)
+ggheatmap.IN <- ggplot(melted_cormat.IN, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Inyo") +xlab("") +ylab("")
+
+cormat.LO <- round(cor(Logan),2)
+melted_cormat.LO <- melt(cormat.LO)
+upper_tri.LO <- get_upper_tri(cormat.LO)
+melted_cormat.LO <- melt(upper_tri.LO, na.rm = TRUE)
+ggheatmap.LO <- ggplot(melted_cormat.LO, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Logan") +xlab("") +ylab("")
+
+cormat.ID <- round(cor(Idaho),2)
+melted_cormat.ID <- melt(cormat.ID)
+upper_tri.ID <- get_upper_tri(cormat.ID)
+melted_cormat.ID <- melt(upper_tri.ID, na.rm = TRUE)
+ggheatmap.ID <- ggplot(melted_cormat.ID, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Idaho") +xlab("") +ylab("")
+
+ggarrange(ggheatmap.all, ggheatmap.AZ, ggheatmap.IN, ggheatmap.ZI, ggheatmap.LO, ggheatmap.ID, nrow=2, ncol=3, common.legend = TRUE, legend = "bottom")
+```
+
+
+### Heatmaps of morphology & scent by compound group
+
+```{r, echo=FALSE}
+ER_f_mass_group_data <- ER_f_mass_groups %>% select(starts_with("G."), Sample_ID)
+
+scent_morph <- full_join(ER_f_mass_group_data, file3) %>% filter(Population!="NA") %>% filter(G.ILE!="NA")
+
+Arizona <- scent_morph %>% filter(Population=="Arizona") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Zion <- scent_morph %>% filter(Population=="Zion") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Inyo <- scent_morph %>% filter(Population=="Inyo") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Logan <- scent_morph %>% filter(Population=="Logan") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+Idaho <- scent_morph %>% filter(Population=="Idaho") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+
+scent_morph <- scent_morph %>% select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+
+cormat.all <- round(cor(scent_morph),2)
+melted_cormat.all <- melt(cormat.all)
+upper_tri.all <- get_upper_tri(cormat.all)
+# Melt the correlation matrix
+melted_cormat.all <- melt(upper_tri.all, na.rm = TRUE)
+# Create a ggheatmap
+ggheatmap.all <- ggplot(melted_cormat.all, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+
+ggtitle("All data") +xlab("") +ylab("")
+
+cormat.AZ <- round(cor(Arizona),2)
+melted_cormat.AZ <- melt(cormat.AZ)
+upper_tri.AZ <- get_upper_tri(cormat.AZ)
+melted_cormat.AZ <- melt(upper_tri.AZ, na.rm = TRUE)
+ggheatmap.AZ <- ggplot(melted_cormat.AZ, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Arizona") +xlab("") +ylab("")
+
+cormat.ZI <- round(cor(Zion),2)
+melted_cormat.ZI <- melt(cormat.ZI)
+upper_tri.ZI <- get_upper_tri(cormat.ZI)
+melted_cormat.ZI <- melt(upper_tri.ZI, na.rm = TRUE)
+ggheatmap.ZI <- ggplot(melted_cormat.ZI, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Zion") +xlab("") +ylab("")
+
+cormat.IN <- round(cor(Inyo),2)
+melted_cormat.IN <- melt(cormat.IN)
+upper_tri.IN <- get_upper_tri(cormat.IN)
+melted_cormat.IN <- melt(upper_tri.IN, na.rm = TRUE)
+ggheatmap.IN <- ggplot(melted_cormat.IN, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Inyo") +xlab("") +ylab("")
+
+cormat.LO <- round(cor(Logan),2)
+melted_cormat.LO <- melt(cormat.LO)
+upper_tri.LO <- get_upper_tri(cormat.LO)
+melted_cormat.LO <- melt(upper_tri.LO, na.rm = TRUE)
+ggheatmap.LO <- ggplot(melted_cormat.LO, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Logan") +xlab("") +ylab("")
+
+cormat.ID <- round(cor(Idaho),2)
+melted_cormat.ID <- melt(cormat.ID)
+upper_tri.ID <- get_upper_tri(cormat.ID)
+melted_cormat.ID <- melt(upper_tri.ID, na.rm = TRUE)
+ggheatmap.ID <- ggplot(melted_cormat.ID, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+    name="Pearson\nCorrelation") +
+  theme_minimal()+ # minimal theme
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed() +
+ggtitle("Idaho") +xlab("") +ylab("")
+
+ggarrange(ggheatmap.all, ggheatmap.AZ, ggheatmap.IN, ggheatmap.ZI, ggheatmap.LO, ggheatmap.ID, nrow=2, ncol=3, common.legend = TRUE, legend = "bottom")
+```
+
+
 ## Floral traits that could vary
 
 | Trait | Approach
 | :---- | :-------
-| Floral scent, total emission rate | Linear mixed model analysis across populations
+| Floral scent, total emission rate | Linear mixed model analysis across populations of total emission rates in toluene equivalents
 | Floral scent, compound diversity | Linear mixed model analysis of the number of compounds in samples across populations
-| Floral scent, blend composition | Multivariate analysis (e.g. Adonis) plus constrained ordination. Options:
-|  | 1. Ordinate on percentage abundance in each sample
-|  | 2. Ordinate on emission rates in each sample
-|  | 3. Ordinate on presence/absence
-| Floral scent, emission rates of key compounds | First, identify what the key compound are. Second, linear mixed model analysis to compare across populations.
+| Floral scent, blend composition | Multivariate analysis (e.g. Adonis) plus constrained ordination. *Currently using emission rates in toluene equivalents, will ultimately convert this to emission rates adjusted for response factors.*
+| | This can be done two ways: 1. using emission rates from individual compounds, or 2. using emission rates that are the sums of all compounds produced from a certain biosynthetic cluster/table.
+| Floral scent, emission rates of key compounds or compound groups | 1. identify what the key compound(s)/compound group(s) are from the constrained ordination. 
+| | 2. linear mixed model analysis to compare across populations.
 | Floral morphology | Multivariate analysis (e.g. Adonis) plus constrained ordination, followed by univariate mixed model analyses of key variables.
+| Scent & morphology together | Multivariate analysis (e.g. Adonis) plus constrained ordination
 
-*Question*: What would be gained by putting floral morphology and floral scent into the same ordination?
-
-*Question*: What is the best form of the scent data to use for ordination?
-
-## Analyses
-
-These analyses use the objects generated in the Test script file.
 
 
 ### Total emission rate
 
-```{r}
+This is total emission rate (per g fresh mass) as a function of population, with plant nested within population as a random effect. So this makes use of all measured flowers.
+
+```{r, echo=FALSE}
 
 ER_f_mass$Population<-factor(ER_f_mass$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
 
 total.model<-lmer(Comp.Total~Population+(1|Pop_Plant), data=ER_f_mass)
+```
 
+Diagnostics for the model residuals:
+```{r, echo=FALSE}
 hist(resid(total.model))
 plot(predict(total.model),resid(total.model)) 
+```
 
+Model summary:
+```{r, echo=FALSE}
 summary(total.model)
-anova(total.model)
+```
 
+ANOVA:
+```{r, echo=FALSE}
+anova(total.model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 emmeans(total.model, pairwise~Population, type="response")
 
 emmip(total.model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission (estimated marginal mean)")+mdthemes::md_theme_classic()
-
-
 ```
+
+**Interpretation**: total scent shows a roughly clinal pattern. Due to the amount of variance, the significant contrasts are that Logan has lower total scent than Inyo or Arizona. Idaho and Zion are intermediate.
 
 ### Compound diversity
 
-```{r}
+This is the number of compounds detected in a sample as a function of population, with plant nested within population as a random effect. So this makes use of all measured flowers.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #Removing the scent samples that had no compounds detected:
 Percents_names <- Percents_wide %>% 
   filter(Comp.2methylbutyronitrile!="NaN") 
@@ -75,23 +654,128 @@ P_A_totals$Population<-factor(P_A_totals$Population, levels=c("Idaho", "Logan", 
 
 #Modeling the total number of compounds in each sample:
 totals.model<-lmer(Total~Population+(1|Pop_Plant), data=P_A_totals)
+```
 
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 hist(resid(totals.model))
-plot(predict(totals.model),resid(totals.model)) 
+plot(predict(totals.model),resid(totals.model))
+```
 
+Model summary:
+```{r, echo=FALSE}
 summary(totals.model)
-anova(totals.model)
+```
 
+ANOVA:
+```{r, echo=FALSE}
+anova(totals.model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 emmeans(totals.model, pairwise~Population, type="response")
 
 emmip(totals.model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Number of compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
 
+**Interpretation**: The total number of compounds also shows a clinal pattern. The significant contrasts are that Idaho has fewer compounds than Inyo, Logan has fewer compounds than Inyo, and Logan has marginally fewer compounds than Arizona (*P* = 0.0497)
+
+### Floral scent blend composition, multivariate analyses using individual compounds
+
+*Note*: these results could change once we are working with emission rates adjusted for response factors
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+Tol_ord <- ER_f_mass %>% 
+  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0)) %>% select(starts_with("Comp.")) %>% select(-Comp.Total)
+  
+Tol_names <- ER_f_mass %>% 
+  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0))%>% select(-Comp.Total)
+
+Tol.adonis <- adonis(Tol_ord~Population, data=Tol_names,permutations=999, method="bray" )
+Tol.adonis
+```
+There is a significant effect of population and it explains about 21 % of the variation in scent.
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+scents.cap <- capscale(Tol_ord ~ Population, Tol_names, dist="bray") 
+summary(scents.cap, display=NULL)
+```
+The constrained portion explains about 19% of overall distance. CAP1 explains about 14% and CAP2 expalins about 3% of overall distance.
+
+Plotting the capscale:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
+pl<-plot(scents.cap, type="n", scaling="sites", correlation=TRUE)
+with(Tol_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(Tol_names$Population)], col= colors[as.factor(Tol_names$Population)],cex=1 ))
+#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
+legend(x=-1.5, y=-0.2, legend=levels(as.factor(ER_f_mass_groups$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
 
 ```
 
-### Compounds grouped by biosynthetic pathway
 
-```{r}
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+
+
+Percent_names_scores<-cbind(Tol_ord, scores)
+
+cors <- as.data.frame(sapply(1:40,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:40,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:40,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:40,function(x) cors2[,x]$p.value)
+pvals.a<-p.adjust(pvals, method="BH")
+pvals.a2<-p.adjust(pvals2, method="BH")
+
+
+co1<-sapply(1:40,function(x) cors[,x]$estimate)
+co2<-sapply(1:40,function(x) cors2[,x]$estimate)
+
+
+compounds<-colnames(Tol_ord)
+
+c.table<-as.data.frame(cbind(compounds,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+Correlated with CAP 1: 2methylbutyronitrile (+), 3methylbutyronitrile (+), nitro-2-methyl-butane (+), nitro-3-methyl-butane (+), trans-isobutyraldoxime (+),  cis-isobutyraldoxime (+), trans-2-methylbutyraldoxime (+), trans-3-methylbutyraldoxime (+), cis-2-methylbutyraldoxime (+), cis-3-methylbutyraldoxime (+), linalool (+), alpha-terpineol (+), phenylacetonitrile (-), nerolidol (-), isophytol (+), farnesol (-).
+
+Correlated with CAP 2: 2methylbutyronitrile (-), nitro-2-methyl-butane (-), trans-2-methylbutyraldoxime (-), cis-2-methylbutyraldoxime (-), 2methylbutyl-benzoate (-).
+
+
+### Floral scent blend composition, multivariate analyses using groupings by biosynthetic pathway
+
+*Note*: these results could change once we are working with emission rates adjusted for response factors
+
+These are the groupings of the compounds:
+
+| Code | Compounds
+| :--- | :--------
+| G.ILE | 2 methylbuyronitrile, nitro-2-methyl butane, cis-2-methylbutyraldoxime, trans-2-methylbutyraldoxime, 2methylbutyl benzoate
+| G.LEU | 3methylbutyronitrile, nitro-3-methyl-butane, cis-3-methylbutyraldoxime, trans-3-methylbutyraldoxime
+| G.VAL | cis-isobutyraldoxime, trans-isobutyraldoxime
+| G.PHE | 2phenylethanol, phenylacetonitrile, nitrophenylethane, phenylacetaldoxime
+| G.OCI | b-myrcene, cis-b-ocimene, trans-b-ocimene, alpha-terpineol
+| G.GER | citronellol, neral, geranial, nerol, geraniol
+| G.LIN | linalool, cis-furanoid-linalool-oxide, trans-furanoid-linalool-oxide, pyran-lin-oxide-ketone, cis-pyranoid-linalool-oxide, trans-pyranoid-linalool-oxide
+| G.CAR | beta-caryophyllene, alpha-humulene, caryophyllene-oxide
+| G.SES | beta-farnesene, Z-E-alpha-farnesene, E-E-alpha-farnesene, farnesene-epoxide, farnesol, nerolidol, isophytol
+
+First, running an adonis (comparable to ANOSIM):
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 #working with ER_f_mass (for now at least), and creating new variables by combining the emission rates of compounds from the same pathway.
 
 #the pathway assignments came from Rob
@@ -108,184 +792,808 @@ ER_f_mass_groups <- ER_f_mass %>% mutate(G.ILE=Comp.2methylbutyronitrile+`Comp.n
 
 ER_f_mass_group_data <- ER_f_mass_groups %>% select(starts_with("G."))
 
-##Correlations by population:
-
-library(reshape2)
-
-Arizona <- ER_f_mass_groups %>% filter(Population=="Arizona") %>%  select(starts_with("G."))
-Zion <- ER_f_mass_groups %>% filter(Population=="Zion") %>%  select(starts_with("G."))
-Inyo <- ER_f_mass_groups %>% filter(Population=="Inyo") %>%  select(starts_with("G."))
-Logan <- ER_f_mass_groups %>% filter(Population=="Logan") %>%  select(starts_with("G."))
-Idaho <- ER_f_mass_groups %>% filter(Population=="Idaho") %>%  select(starts_with("G."))
-
-cormat <- round(cor(Arizona),2)
-head(cormat)
-
-
-melted_cormat <- melt(cormat)
-
-#ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  #geom_tile()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-
-#reorder_cormat <- function(cormat){
-# Use correlation between variables as distance
-#dd <- as.dist((1-cormat)/2)
-#hc <- hclust(dd)
-#cormat <-cormat[hc$order, hc$order]
-#}
- # cormat <- reorder_cormat(cormat)
-   #get_upper_tri <- function(cormat){
-   # cormat[lower.tri(cormat)]<- NA
-  #  return(cormat)
- # }
-  
-upper_tri <- get_upper_tri(cormat)
-# Melt the correlation matrix
-melted_cormat <- melt(upper_tri, na.rm = TRUE)
-# Create a ggheatmap
-ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
- geom_tile(color = "white")+
- scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-   midpoint = 0, limit = c(-1,1), space = "Lab", 
-    name="Pearson\nCorrelation") +
-  theme_minimal()+ # minimal theme
- theme(axis.text.x = element_text(angle = 45, vjust = 1, 
-    size = 12, hjust = 1))+
- coord_fixed()
-# Print the heatmap
-print(ggheatmap)
-
-## Ordination/multivariate analysis
-
 ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
 ER_f_mass_groups <- ER_f_mass_groups %>% slice(.,-c(36,44))
   
 
 groups.adonis <- adonis(ER_f_mass_group_data~Population, data=ER_f_mass_groups,permutations=999, method="bray" )
 
-#population explains about 21% of variation in scent functional classes
+groups.adonis
 
+```
+
+*Interpretation*: The adonis shows a significant effect of population, which explains about 21 % of the variance in scent blend composition.
+
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 scents.cap <- capscale(ER_f_mass_group_data ~ Population, ER_f_mass_groups, dist="bray") 
-scents.cap
+summary(scents.cap, display=NULL)
+```
+The constrained portion explains about 19% of overall distance. CAP1 explains about 14% and CAP2 expalins about 3% of overall distance.
+
+Plotting the capscale:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
 colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
 pl<-plot(scents.cap, type="n", scaling="sites", correlation=TRUE)
-with(ER_f_mass_groups, points(pl, "site",pch=c(21,22,23,24,25)[as.factor(ER_f_mass_groups$Population)], bg= colors[as.factor(ER_f_mass_groups$Population)],cex=1 ))
-text(pl, "sp", scaling=1, arrow=TRUE, length=0.25, col=4, cex=0.6, xpd=TRUE)
+with(ER_f_mass_groups, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(ER_f_mass_groups$Population)], col= colors[as.factor(ER_f_mass_groups$Population)],cex=1 ))
+#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
+legend(x=-1.4, y=-0.4, legend=levels(as.factor(ER_f_mass_groups$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+
+```
 
 
-#univariates
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+
+
+Percent_names_scores<-cbind(ER_f_mass_group_data, scores)
+
+cors <- as.data.frame(sapply(1:9,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:9,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:9,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:9,function(x) cors2[,x]$p.value)
+pvals.a<-p.adjust(pvals, method="BH")
+pvals.a2<-p.adjust(pvals2, method="BH")
+
+
+co1<-sapply(1:9,function(x) cors[,x]$estimate)
+co2<-sapply(1:9,function(x) cors2[,x]$estimate)
+
+
+compounds<-colnames(ER_f_mass_group_data)
+
+c.table<-as.data.frame(cbind(compounds,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$cap1<-as.numeric(as.character(c.table$p1))
+c.table$cap2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+This table indicates that four compound groups are correlated with CAP1 at P adjusted < 0.01 : ILE, LEU, VAL, and LIN. ILE is the only compound group correlated with CAP2.
+
+
+### Floral scent, univariate analyses of key compounds
+
+*Waiting to do this until we have finalized emission rates adjusted for response factors*
+
+### Floral scent, univariate analyses of key compound groups
+
+*Note*: these results could change once we are working with emission rates adjusted for response factors. Also will need to check for p-value adjustments for performing mulitple tests (e.g. one test for each compound group).
+
+For each compound group that was correlated with CAP1 and/or CAP2, the emission rate is modeled as a function of population, with plant nested within population as a random effect. This uses data from all measured flowers. 
+
+**ILE group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
 
 model<-lmer(G.SES~Population+(1|Pop_Plant), data=ER_f_mass_groups)
-
 hist(resid(model))
-plot(predict(model),resid(model)) 
+plot(predict(model),resid(model))
+```
 
+
+Model summary:
+```{r, echo=FALSE}
 summary(model)
-anova(model)
+```
 
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 emmeans(model, pairwise~Population, type="response")
 
-emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission (estimated marginal mean)")+mdthemes::md_theme_classic()
-
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of ILE compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
 ```
 
-### Scent and morphology correlations, using compound classes:
+*Interpretation*: Idaho has higher ILE emissions than Logan. All other contrasts are non-significant.
 
-```{r}
-ER_f_mass_group_data <- ER_f_mass_groups %>% select(starts_with("G."), Sample_ID)
+**LEU group**:
 
-scent_morph <- full_join(ER_f_mass_group_data, file3) %>% filter(Population!="NA") %>% filter(G.ILE!="NA")
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
 
-Arizona <- scent_morph %>% filter(Population=="Arizona") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
-Zion <- scent_morph %>% filter(Population=="Zion") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
-Inyo <- scent_morph %>% filter(Population=="Inyo") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
-Logan <- scent_morph %>% filter(Population=="Logan") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
-Idaho <- scent_morph %>% filter(Population=="Idaho") %>%  select(starts_with("G."), starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
+model<-lmer(G.LEU~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
 
-cormat <- round(cor(Idaho),2)
-head(cormat)
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
 
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
 
-melted_cormat <- melt(cormat)
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
 
-upper_tri <- get_upper_tri(cormat)
-# Melt the correlation matrix
-melted_cormat <- melt(upper_tri, na.rm = TRUE)
-# Create a ggheatmap
-ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
- geom_tile(color = "white")+
- scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
-   midpoint = 0, limit = c(-1,1), space = "Lab", 
-    name="Pearson\nCorrelation") +
-  theme_minimal()+ # minimal theme
- theme(axis.text.x = element_text(angle = 45, vjust = 1, 
-    size = 12, hjust = 1))+
- coord_fixed()
-# Print the heatmap
-print(ggheatmap)                                                                  
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of LEU compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Inyo and Arizona have higher emission rates of LEU compounds relative to Logan.
+
+**VAL group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.VAL~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of VAL compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: No differences across populations.
+
+**LIN group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.LIN~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of LIN compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Inyo and Arizona emit more LIN compounds than Idaho or Logan. Zion is intermediate.
+
+**For data exploration purposes**: These are the analyses of the non-key compound groups, e.g., the groups that were *not* correlated with CAP1 and/or CAP2.
+
+**PHE group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.PHE~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
 ```
 
 
-### Morphology
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
 
-```{r}
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of PHE compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Differences can't really be estimated properly due to the lack of data; these compounds are only produced in Logan.
+
+**OCI group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(sqrt(G.OCI)~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+Square-root transformation applied to improve residuals.
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of OCI compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Arizona has higher emission rates of OCI compounds than Inyo. These compounds are only produced in sizeable volumes in Arizona and Logan (see estimated marginal means above.)
+
+**GER group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.GER~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of GER compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Zion has higher emission rates of GER compounds than Logan, and Zion is marginally higher than Inyo.
+
+**CAR group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.CAR~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of CAR compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: The populations do not differ in the amount of CAR compounds emitted.
+
+**SES group**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.SES~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Total scent emission of SES compounds (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Logan has higher SES emissions than Arizona. All other contrasts are non-significant.
+
+### Floral morphology, multivariate analyses
+
+In order to do multivariate analyses of the morphological variables, I had to drop leaf number and leaf length, because there isn't enough data.
+
+```{r, echo=FALSE}
 morph_data <- file3 %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na()
 
-morph_names <- file3 %>% select(starts_with("M."), Population, Sample_ID) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na() 
+morph_names <- file3 %>% select(starts_with("M."), Population, Pop_Plant) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na() 
 
 morph.adonis <- adonis(morph_data~Population, data=morph_names, permutations=999, method="bray")
+morph.adonis
+```
+*Interpretation*: There is a significant effect of Population. It explains about 44 % of the variation in morphology.
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph.cap <- capscale(morph_data ~ Population, morph_names, dist="bray") 
+summary(morph.cap, display=NULL)
+```
+The constrained portion explains about 35% of overall distance. CAP1 explains about 29% and CAP2 expalins about 5% of overall distance.
+
+Plotting the capscale:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
+pl<-plot(morph.cap, type="n", scaling="sites", correlation=TRUE)
+with(morph_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(morph_names$Population)], col= colors[as.factor(morph_names$Population)],cex=1 ))
+#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
+legend(x=-0.6, y=-0.2, legend=levels(as.factor(morph_names$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+
 ```
 
-Population origin explains about 44% of variation in morphology.
 
-### Scent
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-```{r}
-Percents_ord <- Percents_wide %>% 
-  filter(Comp.2methylbutyronitrile!="NaN") %>% select(starts_with("Comp."))
+scores<-as.data.frame(scores(morph.cap, display="sites"))
 
+
+Percent_names_scores<-cbind(morph_data, scores)
+
+cors <- as.data.frame(sapply(1:9,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:9,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:9,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:9,function(x) cors2[,x]$p.value)
+pvals.a<-p.adjust(pvals, method="BH")
+pvals.a2<-p.adjust(pvals2, method="BH")
+
+
+co1<-sapply(1:9,function(x) cors[,x]$estimate)
+co2<-sapply(1:9,function(x) cors2[,x]$estimate)
+
+
+variables<-colnames(morph_data)
+
+c.table<-as.data.frame(cbind(variables,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+From this, all variables except for percent sugar are correlated with CAP1, and all of them are positively correlated except for pedicel length.
+
+All variables except Hypanthium length and nectar column are correlated with CAP2. All of these correlations are negative.
+
+### Floral morphology, univariate analyses
+
+Looking at all nine floral morphology variables, as all were correlated with CAP1 and/or CAP2. Each variable is modeled as a function of population, with plant nested within population as a random effect. This uses data from all measured flowers where all variables were measured on the flower.
+
+
+**Corolla D1**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Corolla_D1~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Corolla dimension 1 (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: There is somewhat of a clinal pattern in corolla dimension 1. The only significant contrast is that Logan is smaller than Inyo.
+
+**Corolla D2**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Corolla_D2~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Corolla dimension 2 (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Zion has a significantly larger corolla dimension 2 relative to all other populations. Inyo and Arizona have the next largest corolla D2, which is larger than Logan but comparable to Idaho. 
+
+**Tube Flare**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Tube_Flare~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Tube flare (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Zion is equal to Inyo, but greater than Arizona, Logan, and Idaho. Inyo is equal to Arizona and Idaho, and marginally larger than Logan. Idaho, Logan, and Arizona are equivalent.
+
+**Stamen Length**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Stamen_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Stamen length (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Zion has longer stamens then all other populations. Inyo has longer stamens than Logan and Arizona, and comparable stamens to Idaho. Idaho, Logan, and Arizona all have comparable stamens.
+
+
+**Style Length**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Style_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Style length (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Zion has longer styles then all other populations except Inyo. Inyo has longer stamens than Logan and Arizona, and comparable styles to Idaho. Idaho, Logan, and Arizona all have comparable styles.
+
+**Hypanthium Length**:
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Hypanthium_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+It looks like there is one outlier: rm2-28 (Arizona) the fifth flower, measured on 6/19. It has a length of 36.48, but the other four flowers from the plant all have lengths over 100. I suspect that the 100 digit may have been dropped from this measurement. Can we either resolve this from the paper datasheet or remove this outlier?
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Hypanthium length (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Clinal pattern. Idaho and Logan have the same lengths, which are lower than the other three populations. Zion, Inyo, and Arizona are all comparable.
+
+**Pedicel length**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Pedicel_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Pedicel length (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: The only significant contrasts are that Logan and Zion have larger pedicel lengths than Arizona.
+
+**Nectar column**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Nectar_Column~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Nectar column (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: The only significant contrast is Logan is lower than Arizona.
+
+**Percent sugar**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Idaho", "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Percent_Sugar~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+Model summary:
+```{r, echo=FALSE}
+summary(model)
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+emmeans(model, pairwise~Population, type="response")
+
+emmip(model, ~Population, CIs = TRUE,type="response")+xlab("Population")+ylab("Percent sugar (estimated marginal mean)")+mdthemes::md_theme_classic()
+```
+
+*Interpretation*: Idaho has higher percent sugar than Logan and Arizona, and marginally higher relative to Inyo. 
+
+
+### Multivariate analysis of scent and morphology together
+
+```{r, echo=FALSE}
 Percents_names <- Percents_wide %>% 
-  filter(Comp.2methylbutyronitrile!="NaN") 
+  filter(Comp.2methylbutyronitrile!="NaN")
 
-Percents.adonis <- adonis(Percents_ord~Population, data=Percents_names,permutations=999, method="bray" )
+morph_names <- file3 %>% select(starts_with("M."), Population, Pop_Plant, Sample_ID) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") 
 
-Tol_ord <- ER_f_mass %>% 
-  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0)) %>% select(starts_with("Comp.")) %>% select(-Comp.Total)
-  
-Tol_names <- ER_f_mass %>% 
-  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0))%>% select(-Comp.Total)
-
-Tol.adonis <- adonis(Tol_ord~Population, data=Tol_names,permutations=999, method="bray" )
-
-
-Tol_ord_rare <- ER_f_mass_rare %>% 
-  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0)) %>% select(starts_with("Comp.")) %>% select(-Comp.Total)
-
-Tol_names_rare <- ER_f_mass_rare %>% 
-  select(starts_with("Comp."), Population) %>% filter_if(is.numeric, any_vars(. != 0))%>% select(-Comp.Total)
-
-Tol.rare.adonis <- adonis(Tol_ord_rare~Population, data=Tol_names_rare,permutations=999, method="bray" )
-
-scents.cap.rare <- capscale(Tol_ord_rare ~ Population, Tol_names_rare, dist="bray") 
-scents.cap.rare
-```
-
-Population explains about 21% of variation in the percent composition of floral scent samples and also in the toluene-equivalents emission rates.
-
-### Scent and morphology together
-
-```{r}
 All_data_names <- full_join(Percents_names, morph_names) %>% drop_na()
 All_data <- All_data_names %>%  select(starts_with("M."), starts_with("Comp."))
 
 
-All.adonis <- adonis(All_data~Population, data=All_data_names,permutations=999, method="bray" )
+All.adonis <- adonis(All_data~Population, data=All_data_names,permutations=999, method="bray")
 
 ```
 
-Population explains about 35 % of the variation in percent composition of floral scent and in morphology. 
+Population explains about 35 % of the variation in percent composition of floral scent and in morphology. (As a reminder, population explained about 21 % of variation in the scent only dataset, and about 44 $ of variation in the morphology only dataset.)
 
-*What does this mean?*--Do scent and morphology not explain different portions of the variation? Can we interpret scent as adding more noise?
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph.cap2 <- capscale(All_data ~ Population, All_data_names, dist="bray") 
+summary(morph.cap2, display=NULL)
+```
+The constrained portion explains about 29% of overall distance. CAP1 explains about 21% and CAP2 expalins about 4% of overall distance.
+
+Plotting the capscale:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
+pl<-plot(morph.cap2, type="n", scaling="sites", correlation=TRUE)
+with(morph_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(All_data_names$Population)], col= colors[as.factor(All_data_names$Population)],cex=1 ))
+#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
+legend(x=-0.7, y=-0.1, legend=levels(as.factor(All_data_names$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+
+```
+
+
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+scores<-as.data.frame(scores(morph.cap2, display="sites"))
+
+
+Percent_names_scores<-cbind(All_data, scores)
+
+cors <- as.data.frame(sapply(1:49,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:49,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:49,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:49,function(x) cors2[,x]$p.value)
+pvals.a<-p.adjust(pvals, method="BH")
+pvals.a2<-p.adjust(pvals2, method="BH")
+
+
+co1<-sapply(1:49,function(x) cors[,x]$estimate)
+co2<-sapply(1:49,function(x) cors2[,x]$estimate)
+
+
+variables<-colnames(All_data)
+
+c.table<-as.data.frame(cbind(variables,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+Correlated with CAP 1: all morphological variables except percent sugar (all + except Hypanthium length), 3methylbutyronitrile (+), trans-3-methylbutyraldoxime (+), cis-3-methylbutyraldoxime (+), neral (+),  Z-E-alpha-farnesene (-), geranial (+), cis-pyranoid-linalool-oxide (-), E-E-alpha-farnesene (-), phenylacetonitrile (-), farnesol (-)
+
+Correlated with CAP 2: corolla D2 (-), Tube flare (-), stamen length (-), style length (-), percent sugar (-), 2methylbutyronitrile (+), trans-b-ocimene (+), nitro-2-methyl-butane (-), trans-2-methylbutyraldoxime (-), trans-3-methylbutyraldoxime (-), cis-2-methylbutyraldoxime (-), linalool (+).
+
+
+
+
+
+
+
+
+
+
+
