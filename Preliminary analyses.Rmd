@@ -1,5 +1,5 @@
 ---
-title: "Oenothera preliminary analyses"
+title: "Oenothera preliminary analyses, updated Oct 30 2020"
 output: html_document
 ---
 
@@ -734,11 +734,14 @@ Plotting the capscale:
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
-pl<-plot(scents.cap, type="n", scaling="sites", correlation=TRUE)
-with(Tol_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(Tol_names$Population)], col= colors[as.factor(Tol_names$Population)],cex=1 ))
-#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
-legend(x=-1.2, y=-0.2, legend=levels(as.factor(ER_f_mass_groups$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+Percent_names_scores<-cbind(Tol_names, scores)
+arrows<-as.data.frame(scores(scents.cap, display="species"))
+
+ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") 
+
+
+#+geom_segment(aes(x=0,y=0,xend=CAP1*2, yend=CAP2*2), data=arrows)
 
 ```
 
@@ -845,11 +848,14 @@ Plotting the capscale:
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
-pl<-plot(scents.cap, type="n", scaling="sites", correlation=TRUE)
-with(ER_f_mass_groups, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(ER_f_mass_groups$Population)], col= colors[as.factor(ER_f_mass_groups$Population)],cex=1 ))
-#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
-legend(x=-1.4, y=-0.3, legend=levels(as.factor(ER_f_mass_groups$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+Percent_names_scores<-cbind(Tol_names, scores)
+arrows<-as.data.frame(scores(scents.cap, display="species"))
+
+ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") 
+
+
+#+geom_segment(aes(x=0,y=0,xend=CAP1*2, yend=CAP2*2), data=arrows)
 
 ```
 
@@ -1221,11 +1227,14 @@ Plotting the capscale:
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
-pl<-plot(morph.cap, type="n", scaling="sites", correlation=TRUE)
-with(morph_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(morph_names$Population)], col= colors[as.factor(morph_names$Population)],cex=1 ))
-#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
-legend(x=-0.6, y=-0.2, legend=levels(as.factor(morph_names$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+scores<-as.data.frame(scores(morph.cap, display="sites"))
+Percent_names_scores<-cbind(morph_names, scores)
+arrows<-as.data.frame(scores(morph.cap, display="species"))
+
+ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") 
+
+
+#+geom_segment(aes(x=0,y=0,xend=CAP1*2, yend=CAP2*2), data=arrows)
 
 ```
 
@@ -1597,11 +1606,14 @@ Plotting the capscale:
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 
-colors<-c("firebrick1", "dodgerblue1", "cadetblue1", "goldenrod1","pink")
-pl<-plot(morph.cap2, type="n", scaling="sites", correlation=TRUE)
-with(morph_names, points(pl, "site",pch=c(15,15,15,15,15)[as.factor(All_data_names$Population)], col= colors[as.factor(All_data_names$Population)],cex=1 ))
-#text(pl, "sp", scaling=1, arrow=TRUE, length=0.5, col=4, cex=0.6, xpd=TRUE)
-legend(x=-0.6, y=-0.1, legend=levels(as.factor(All_data_names$Population)),  col=colors, pch=c(15,15,15,15,15), cex=1)
+scores<-as.data.frame(scores(morph.cap2, display="sites"))
+Percent_names_scores<-cbind(All_data_names, scores)
+arrows<-as.data.frame(scores(morph.cap2, display="species"))
+
+ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") 
+
+
+#+geom_segment(aes(x=0,y=0,xend=CAP1*2, yend=CAP2*2), data=arrows)
 
 ```
 
