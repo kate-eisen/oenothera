@@ -1588,6 +1588,26 @@ Correlated with CAP 1: all morphological variables except percent sugar (all + e
 Correlated with CAP 2: corolla D2 (-), Tube flare (-), stamen length (-), style length (-), percent sugar (-), 2methylbutyronitrile (+), trans-b-ocimene (+), nitro-2-methyl-butane (-), trans-2-methylbutyraldoxime (-), trans-3-methylbutyraldoxime (-), cis-2-methylbutyraldoxime (-), linalool (+).
 
 
+## For repeatability
+`P_A_totals` has the data for compound diversity
+`ER_f_mass` has the total emission rate
+
+```{r}
+total.model<-lmer(Comp.Total~Population+(1|Pop_Plant), data=ER_f_mass)
+hist(resid(total.model))
+plot(predict(total.model),resid(total.model)) 
+
+```
+
+```{r}
+#install.packages("rptR")
+library(rptR)
+```
+
+```{r}
+rpt_est <- rptGaussian(Comp.Total~(1|Population)+(1|Pop_Plant), grname=c("Pop_Plant","Population"), data=ER_f_mass)
+```
+
 
 
 
