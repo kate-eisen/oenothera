@@ -1,0 +1,72 @@
+---
+title: "column_descriptions"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Log_standards.csv
+
+Column Position  | Column Name | Description of Contents
+------------- | ------------- | -------------------------
+A | Compound | Name of the compound run
+B | Log_Conc | Concentration of the compound in log scale
+C | Log_Peak | Peak area on the log scale
+D | Peak | Raw peak area
+
+## Scent_Full.csv
+
+*For IUPAC compound names, please see Table S2.*
+
+Column Position  | Column Name | Description of Contents
+------------- | ------------- | -------------------------
+A | Compounds | Names of all compounds found in the dataset
+B - FO | sample IDs | Columns B through FO contain the data from a given sample. For meta data on the sample, see the Scent_Meta.csv file
+
+## Scent_Meta.csv
+Column Position  | Column Name | Description of Contents
+------------- | ------------- | -------------------------
+A | Population | Name of the population. For details on populations, see Table S1
+B | Sample_ID_old	| Sample ID from Rong's notebook
+C | Sample_ID	| Sample ID in a uniform format. Matches column names in Scent_Full.csv
+D | Pop_Plant	| Population and plant for use as random effect in models
+E | Flower_ID	| The number of the flower measured on the given plant
+F | Type	| Yes is the first flower on the plant, No is all other plants
+G | Date	| Date the flower was sampled
+H | Toluene_Area	| Raw peak area of toluene, the internal standard
+I | Toluene_Amt	| Amount of toluene in nanograms
+J | Sample_Vol	| Volume of the sample in nanoliters
+K | No_Hours	| Number of hours samples were collected for
+L | No_Flowers	| Number of flowers included in the sample
+M | Fresh_Mass	| Fresh mass of the sampled flower in grams
+N | Dry_Mass | Dry mass of the sampled flower in grams
+
+## Morph_Full.csv
+
+**For illustration of the morphological traits, see Figure S1**
+
+Column Position  | Column Name | Description of Contents
+------------- | ------------- | -------------------------
+A | Population | Name of the population. For details on populations, see Table S1
+B | Sample_ID_old	| Sample ID from Rong's notebook
+C | Sample_ID	| Sample ID in a uniform format. Matches column names in Scent_Full.csv
+D | Pop_Plant	| Population and plant for use as random effect in models
+E | Flower_ID	| The number of the flower measured on the given plant
+F | Type	| Yes is the first flower on the plant, No is all other plants
+G | Date	| Date the flower was sampled
+H | M.Corolla_D1 | Dimension measurement 1 of the corolla in mm, used to calculate average corolla width
+I | M.Corolla_D2 | Dimension measurement 2 of the corolla in mm, used to calculate average corolla width
+J | M.Tube_Flare | Tube flare in mm
+K | M.Stamen_Length	| Stamen length in mm, used to calculate herkogamy
+L | M.Style_Length	| Style length in mm, used to calculate herkogamy
+M | M.Hypanthium_Length | Hypanthium length in mm
+N | M.Pedicel_Length	| Pedicel length in mm
+O | M.Leaf_Number	| Leaf number
+P | M.Leaf_Length	| Leaf length in mm
+Q | M.Nectar_Column	| Height of nectar in the capillary tube, used to calculate standing nectar volume (see Methods in manuscript)
+R | M.Percent_Sugar	| Percentage sugar in nectar
+S | Fresh_Mass	| Fresh mass of the sampled flower in grams
+T | Dry_Mass | Dry mass of the sampled flower in grams
+

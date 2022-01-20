@@ -1,0 +1,11 @@
+data files: 
+
+**see column_descriptions.md for a description of each column in each file**
+
+Log_standards.csv : concentrations of external standards used to quantify emission rates
+
+Morph_Full.csv : all morphology data
+
+Scent_Full.csv : raw peak area data for each floral scent sample run
+
+Scent_Meta.csv : all meta data for each scent sample run
