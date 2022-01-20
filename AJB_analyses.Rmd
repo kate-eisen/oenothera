@@ -1,0 +1,1235 @@
+---
+title: "Oenothera analyses for publication"
+output: github_document
+---
+
+This code generates the analyses and figures for the AJB Oenothera manuscript.
+
+Sections:
+
+0. Package loading/data import and set up
+1. General scent summary measures
+2. Manuscript Q1: What is the repeatability of floral scent? Addressed with rptR (total scent, compound diversity, compound group diversity) and hmsc (twelve composite scent variables); includes main text Figure 1
+3. Manuscript Q2: Are populations differentiated in floral morphology, floral scent, or both types of traits? Addressed with adonis (scent, morphology, combined dataset), capscale (same three datasets), and univariate linear mixed models; includes figures xxx
+
+## 0: importing the data and setting up the scent data in a usable way
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# need the relevant code from test script in order to be able to knit this file
+
+library(tidyverse)
+library(plotrix)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(vegan)
+library(knitr)
+library(reshape2)
+library(ggpubr)
+library(rptR)
+library(readxl)
+library(Hmsc)
+library(corrplot)
+library(data.table)
+library(dplyr)
+library(reshape)
+library(cowplot)
+theme_set(theme_cowplot())
+library(ggsci)
+```
+
+## 0.1: loading in the data on the dose-response curves for the standards, to generate the equations to use to calculate emission rates
+
+```{r}
+standards <- read_excel("Log_standards.xlsx")
+
+eq <- function(df) summary(lm(Log_Peak ~ Log_Conc, data = df))
+
+v <- lapply(split(standards, standards$Compound), eq)
+
+Comp=sort(as.factor(c(unique(standards$Compound),unique(standards$Compound))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+for (i in 1:7){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+results<-cbind(results, Comp)
+
+toluene <- function(x){ exp((log(x)-8.1799717)/0.9628326)}
+
+linalool <- function(x){ exp((log(x)-8.2888813)/1.0162861)}
+
+farnesol <- function(x){ exp((log(x)-8.3353627)/1.1305836)}
+
+caryophyllene <- function(x){ exp((log(x)-8.2713076)/1.0698165)}
+
+geraniol <- function(x){ exp((log(x)-8.3307349)/1.0563147)}
+
+benzoate <- function(x){ exp((log(x)-8.1937426)/1.0395117)}
+```
+
+## 0.2: loading in the raw datasets:
+
+```{r}
+file1<-readxl::read_excel("Scent_Full.xlsx", na="0")
+file1<-file1 %>% mutate_all(~replace(.,is.na(.), 0))
+
+file2<-readxl::read_excel("Scent_Meta.xlsx")
+
+file3<-readxl::read_excel("Morph_Full.xlsx")
+```
+
+## 0.3: reformatting scent data and converting to emission rates using external standards:
+
+```{r}
+Totals<-file1 %>% 
+  bind_rows(summarise_all(., list(~if(is.numeric(.)) sum(.) else "Comp.Total"))) %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compounds, values_from = value)
+
+#this is the concentration in the samples, not on a log scale:
+Totals_std <- Totals %>% 
+  mutate(ER.2methylbutyronitrile=toluene(Comp.2methylbutyronitrile)) %>% 
+  mutate(ER.3methylbutyronitrile=toluene(Comp.3methylbutyronitrile)) %>% 
+  mutate(`ER.b-myrcene`=linalool(`Comp.b-myrcene`)) %>% 
+  mutate(`ER.cis-b-ocimene`=linalool(`Comp.cis-b-ocimene`)) %>% 
+  mutate(`ER.trans-b-ocimene`=linalool(`Comp.trans-b-ocimene`)) %>% 
+  mutate(`ER.nitro-2-methyl-butane`=toluene(`Comp.nitro-2-methyl-butane`)) %>% 
+  mutate(`ER.nitro-3-methyl-butane`=toluene(`Comp.nitro-3-methyl-butane`)) %>% 
+  mutate(`ER.trans-isobutyraldoxime`=toluene(`Comp.trans-isobutyraldoxime`)) %>%
+	mutate(`ER.cis-isobutyraldoxime`=toluene(`Comp.cis-isobutyraldoxime`)) %>%
+  mutate(`ER.cis-furanoid-linalool-oxide`=linalool(`Comp.cis-furanoid-linalool-oxide`)) %>%
+  mutate(`ER.trans-furanoid-linalool-oxide`=linalool(`Comp.trans-furanoid-linalool-oxide`)) %>% 
+  mutate(`ER.pyran-lin-oxide-ketone`=toluene(`Comp.pyran-lin-oxide-ketone`)) %>%
+  mutate(`ER.trans-2-methylbutyraldoxime`=toluene(`Comp.trans-2-methylbutyraldoxime`)) %>%
+  mutate(`ER.trans-3-methylbutyraldoxime`=toluene(`Comp.trans-3-methylbutyraldoxime`)) %>%
+  mutate(`ER.cis-2-methylbutyraldoxime`=toluene(`Comp.cis-2-methylbutyraldoxime`)) %>%
+  mutate(`ER.cis-3-methylbutyraldoxime`=toluene(`Comp.cis-3-methylbutyraldoxime`)) %>%
+  mutate(`ER.linalool`=linalool(`Comp.linalool`)) %>% 
+  mutate(`ER.beta-caryophyllene`=caryophyllene(`Comp.beta-caryophyllene`)) %>%
+  mutate(`ER.beta-farnesene`=caryophyllene(`Comp.beta-farnesene`)) %>%
+  mutate(`ER.alpha-humulene`=caryophyllene(`Comp.alpha-humulene`)) %>%
+  mutate(`ER.neral`=geraniol(`Comp.neral`)) %>%
+  mutate(`ER.alpha-terpineol`=linalool(`Comp.alpha-terpineol`)) %>% 
+  mutate(`ER.Z-E-alpha-farnesene`=caryophyllene(`Comp.Z-E-alpha-farnesene`)) %>%
+  mutate(`ER.geranial`=geraniol(`Comp.geranial`)) %>%
+  mutate(`ER.cis-pyranoid-linalool-oxide`=linalool(`Comp.cis-pyranoid-linalool-oxide`)) %>%
+  mutate(`ER.E-E-alpha-farnesene`=caryophyllene(`Comp.E-E-alpha-farnesene`)) %>%
+  mutate(`ER.citronellol`=geraniol(`Comp.citronellol`)) %>%
+  mutate(`ER.trans-pyranoid-linalool-oxide`=linalool(`Comp.trans-pyranoid-linalool-oxide`)) %>%
+  mutate(`ER.nerol`=geraniol(`Comp.nerol`)) %>%
+  mutate(`ER.geraniol`=geraniol(`Comp.geraniol`)) %>%
+  mutate(`ER.2methylbutyl-benzoate`=benzoate(`Comp.2methylbutyl-benzoate`)) %>%
+  mutate(`ER.2phenylethanol`=benzoate(`Comp.2phenylethanol`)) %>%
+  mutate(`ER.phenylacetonitrile`=toluene(`Comp.phenylacetonitrile`)) %>%
+  mutate(`ER.farnesene-epoxide`=caryophyllene(`Comp.farnesene-epoxide`)) %>%
+  mutate(`ER.caryophyllene-oxide`=caryophyllene(`Comp.caryophyllene-oxide`)) %>%
+  mutate(`ER.nerolidol`=farnesol(`Comp.nerolidol`)) %>%
+  mutate(`ER.nitrophenylethane`=toluene(`Comp.nitrophenylethane`)) %>%
+  mutate(`ER.phenylacetaldoxime`=toluene(`Comp.phenylacetaldoxime`)) %>%
+  mutate(`ER.isophytol`=farnesol(`Comp.isophytol`)) %>%
+  mutate(`ER.farnesol`=farnesol(`Comp.farnesol`)) %>%
+  mutate(`ER.Total`=toluene(`Comp.Total`)) %>%
+  select(starts_with(c("Sample","ER.")))
+```
+
+## 0.4: generating scent data as percentages for Table S3
+```{r}
+percent <- function(x) { round((x/sum(x)) * 100, digits=3)
+}
+
+Percents<-file1 %>% 
+  mutate_at(vars(starts_with("Samp.")), percent)
+
+Percents_wide <- Percents %>% 
+  pivot_longer(cols=starts_with("Samp."),names_to="Sample_ID") %>% 
+  pivot_wider(names_from=Compounds, values_from = value) %>% 
+  full_join(file2)
+
+#code for percentages for the first flower only
+Percents_pop_first <- Percents_wide %>% filter(Type=="Yes") %>% drop_na() %>%  group_by(Population) %>%  summarize_at(vars(matches("Comp")), list(mean, std.error))
+
+#code for percentages for all flowers
+Percents_pop <- Percents_wide %>%  drop_na() %>%  group_by(Population) %>%  summarize_at(vars(matches("Comp")), list(mean, std.error))
+
+```
+
+## 0.5: Code to go to emission rates:
+
+```{r}
+T_S<-function(Column, Tol.Area, Tol.Amt, Samp.Vol) {
+  Column*(Tol.Amt/Tol.Area)*Samp.Vol
+} 
+
+ER_Fm<-function(Total.Samp, Hrs, Fr.Mass) {
+  Total.Samp/Hrs/Fr.Mass
+}
+
+Er_std <- function(Amount, Fr.Mass) {
+  Amount/Fr.Mass
+}
+
+Total_Samples<-Totals %>%  full_join(file2) %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~T_S(.,Toluene_Area,Toluene_Amt, Sample_Vol))) 
+
+ER_f_mass<-Total_Samples %>% 
+  mutate_at(vars(starts_with("Comp.")), list(~ER_Fm(.,No_Hours, Fresh_Mass))) 
+
+
+Totals_std_ER <- Totals_std %>% full_join(file2) %>%  
+  mutate_at(vars(starts_with("ER.")), list(~Er_std(.,Fresh_Mass))) 
+
+
+```
+
+## 0.6: Code to generate total scent summaries by flower, dry mass, and fresh mass (Table S3):
+
+```{r}
+
+```
+
+
+
+## 0.7: Code to generate morphology summary measurements (Table S4):
+
+```{r}
+nectar <- function(x){(0.5516*x)+0.0506}
+
+morph_sum <- file3 %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2) %>% drop_na() %>% group_by(Population) %>%  summarize_at(vars(matches("M.")), list(mean, std.error))
+
+morph_sum_one <- file3 %>% filter(Type=="Yes") %>%  select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2) %>% drop_na() %>% group_by(Population) %>%  summarize_at(vars(matches("M.")), list(mean, std.error))
+  
+  
+
+morph_data <- file3 %>%  filter(Population!="Idaho"& Type=="Yes") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>%  drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+
+```
+
+## 0.8: Code to generate major/minor product comparisons referenced in scent summary section:
+
+```{r}
+# Objects for caryophyllene
+
+caryo_major <- Totals_std_ER %>% filter(`ER.caryophyllene-oxide`==0 & `ER.alpha-humulene`==0) %>% select(`ER.caryophyllene-oxide`, `ER.alpha-humulene`, `ER.beta-caryophyllene` )
+caryo_minor <- Totals_std_ER %>% filter(`ER.caryophyllene-oxide`!=0 | `ER.alpha-humulene`!=0)%>% select(`ER.caryophyllene-oxide`, `ER.alpha-humulene`, `ER.beta-caryophyllene` )
+
+var.test(caryo_major$`ER.beta-caryophyllene`, caryo_minor$`ER.beta-caryophyllene`)
+
+#need unequal variance for t-test
+
+t.test(caryo_major$`ER.beta-caryophyllene`, caryo_minor$`ER.beta-caryophyllene`, var.equal = FALSE)
+
+#objects for ocimene
+ocimene_major <- Totals_std_ER %>% filter(`ER.cis-b-ocimene`==0 & `ER.b-myrcene`==0) %>% select(`ER.cis-b-ocimene`, `ER.b-myrcene`, `ER.trans-b-ocimene` )
+ocimene_minor <- Totals_std_ER %>% filter(`ER.cis-b-ocimene`!=0 | `ER.b-myrcene`!=0) %>% select(`ER.cis-b-ocimene`, `ER.b-myrcene`, `ER.trans-b-ocimene` )
+
+var.test(ocimene_major$`ER.trans-b-ocimene`, ocimene_minor$`ER.trans-b-ocimene`)
+
+#need unequal variance for t-test
+
+t.test(ocimene_major$`ER.trans-b-ocimene`, ocimene_minor$`ER.trans-b-ocimene`, var.equal = FALSE)
+
+#objects for farnesene
+farn_major <- Totals_std_ER %>% filter(`ER.Z-E-alpha-farnesene`==0 ) %>% select(`ER.Z-E-alpha-farnesene`, `ER.E-E-alpha-farnesene`)
+farn_minor <- Totals_std_ER %>% filter(`ER.Z-E-alpha-farnesene`!=0 ) %>% select(`ER.Z-E-alpha-farnesene`, `ER.E-E-alpha-farnesene`)
+
+var.test(farn_major$`ER.E-E-alpha-farnesene`, farn_minor$`ER.E-E-alpha-farnesene`)
+
+#need unequal variance for t-test
+
+t.test(farn_major$`ER.E-E-alpha-farnesene`, farn_minor$`ER.E-E-alpha-farnesene`, var.equal = FALSE)
+
+
+#objects for geraniol
+
+ger_major <- Totals_std_ER %>% filter(`ER.neral`==0 & `ER.nerol`==0 & `ER.geranial`==0) %>% select(`ER.neral`, `ER.nerol`, `ER.geranial`,  `ER.geraniol` )
+ger_minor <- Totals_std_ER %>% filter(`ER.neral`!=0 | `ER.nerol`!=0 | `ER.geranial`!=0) %>% select(`ER.neral`, `ER.nerol`, `ER.geranial`,  `ER.geraniol` )
+
+var.test(ger_major$`ER.geraniol`, ger_minor$`ER.geraniol`)
+
+#need unequal variance for t-test
+
+t.test(ger_major$`ER.geraniol`, ger_minor$`ER.geraniol`, var.equal = FALSE)
+```
+
+## 0.9 setting up scent group data (12 scent variables):
+
+```{r}
+##setting up scent group data
+ER_f_mass_groups <- Totals_std_ER  %>% mutate(
+G.ILE=ER.2methylbutyronitrile+`ER.nitro-2-methyl-butane`+`ER.cis-2-methylbutyraldoxime`+`ER.trans-2-methylbutyraldoxime`,                                  G.LEU=ER.3methylbutyronitrile+`ER.nitro-3-methyl-butane`+`ER.cis-3-methylbutyraldoxime`+`ER.trans-3-methylbutyraldoxime`+`ER.cis-isobutyraldoxime`+`ER.trans-isobutyraldoxime`,                                     G.PHE=ER.2phenylethanol+ER.phenylacetonitrile+ER.nitrophenylethane+ER.phenylacetaldoxime,
+G.OCI=`ER.b-myrcene`+`ER.cis-b-ocimene`+`ER.trans-b-ocimene`,
+G.GER=ER.citronellol+ER.neral+ER.geranial+ER.nerol+ER.geraniol,
+G.LIN=ER.linalool,                                       G.LID=`ER.cis-furanoid-linalool-oxide`+`ER.trans-furanoid-linalool-oxide`+`ER.pyran-lin-oxide-ketone`+`ER.cis-pyranoid-linalool-oxide`+`ER.trans-pyranoid-linalool-oxide`,                                         G.CAR=`ER.beta-caryophyllene`+`ER.alpha-humulene`+`ER.caryophyllene-oxide`+ER.farnesol,                           G.FAR=`ER.beta-farnesene`+`ER.Z-E-alpha-farnesene`+`ER.E-E-alpha-farnesene`+`ER.farnesene-epoxide`,
+G.NER=ER.nerolidol,
+G.ISO=ER.isophytol,
+G.ALT=`ER.alpha-terpineol`)
+
+ER_f_mass_group_data <- ER_f_mass_groups %>% select(starts_with("G."))
+
+ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
+ER_f_mass_groups <- ER_f_mass_groups %>% slice(.,-c(36,44))
+
+ER_f_mass_all_data <- ER_f_mass_groups %>% select(starts_with("ER.")) %>% select(-ER.Total)
+```
+
+## Q1: Repeatability of floral scent
+
+```{r}
+##using rptR
+rpt_est_total <- rptGaussian(ER.Total~Population+(1|Pop_Plant), grname=c("Pop_Plant"), data=Totals_std_ER)
+
+rpt_est_comps <- rptPoisson(Total~Population+(1|Pop_Plant), grname=c("Pop_Plant"), data=P_A_totals)
+
+#number of groups
+ER_f_mass_group_totals <- ER_f_mass_group_data
+ER_f_mass_group_totals[ER_f_mass_group_totals>0]<-1
+
+group_totals <- ER_f_mass_group_totals %>%  mutate(Total=rowSums(.)) %>% cbind(., Population=ER_f_mass_groups$Population, Pop_Plant=ER_f_mass_groups$Pop_Plant) 
+
+
+rpt_est_comp_groups <- rptPoisson(Total~Population+(1|Pop_Plant), grname=c("Pop_Plant"), data=group_totals)
+```
+
+```{r}
+##using hmsc
+Y <- as.matrix(ER_f_mass_group_data)
+
+XData <- data.frame(Population      = as.factor(ER_f_mass_groups$Population))   
+
+studyDesign = data.frame(Plant     = as.factor(ER_f_mass_groups$Pop_Plant),
+                         Flower = as.factor(ER_f_mass_groups$Flower_ID),
+                         sample_date = as.factor(ER_f_mass_groups$Date))
+
+rL1 = HmscRandomLevel(units = levels(studyDesign$Plant     ))    
+rL2 = HmscRandomLevel(units = levels(studyDesign$Flower        ))
+rL3 = HmscRandomLevel(units = levels(studyDesign$sample_date        ))
+
+
+#tried values of a2 from not specifying this at all, up to 10, and found that 5 maximizes the R^2 of the model
+rL1 = setPriors(rL1, a1=1, a2=5, b1=1, b2=1)
+
+
+Y_scaled <- apply(Y, 2, function (x) x/mean(x))
+m = Hmsc(Y=Y_scaled, 
+         XData       = XData, 
+         XFormula    = ~Population,  
+         YScale      = F,                               
+         distr       = ("normal"),
+         studyDesign = studyDesign,
+         ranLevels   = list(Plant     = rL1, 
+                            Flower         = rL2,
+                            sample_date = rL3))
+
+m$Y[1:5, 1:5]
+head(m$X)
+m$rL
+m$a1
+```
+
+```{r}
+m = sampleMcmc(m,                 
+               thin = 1, 
+               samples = 1000,     
+               transient = 500,    
+               nChains = 1,       
+               verbose = 20)    
+
+mpost = convertToCodaObject(m)
+
+pdf("betapost.pdf")
+plot(mpost$Beta)
+dev.off()
+
+#the left hand side plots show the sampling and should cover the whole range,
+#meaning there should be large fluctuations
+#the right hand side plots should show normal distribution, if not, you can try 
+#to increase sampling
+
+#this tests whether the sampling covered the whole possible parameter space
+#the mean should be somewhat close to the "samples" size you set above in the
+#"sampleMCMC" command
+summary(effectiveSize(mpost$Beta))
+```
+
+```{r}
+# variance partitioning
+# recommended to group variables related to the same theme, as then the variance 
+# component accounts also for co-variation within the group
+m$covNames
+
+#to compute variances for each factor level
+VP = computeVariancePartitioning(m)
+
+#to group all levels of one factor together
+#example:
+VP = computeVariancePartitioning(m, group = c(1,1,1,1,1), 
+                                 groupnames = c("Population"))
+
+plotVariancePartitioning(m, VP = VP)
+
+
+#evaluate model explanatory power in terms of R2
+preds = computePredictedValues(m)
+MF = evaluateModelFit(hM=m, predY=preds)
+MF$R2
+hist(MF$R2, xlim = c(0,1), main=paste0("Mean = ", round(mean(MF$R2),2)))
+```
+
+```{r}
+#####This script calculates the proportion of unexplained variance into your plot, and 
+#plots in ggplot. 
+
+#extract values of the variance partitioning
+VPvals1 <- as.data.frame(VP$vals)
+VPvals  <- as.data.frame(t(VPvals1))
+colnames(VPvals) <- rownames(VPvals1)
+VPvals$compound  <- colnames(VPvals1)
+
+#extract R2 for each compound (i.e. variance explained by the model)
+VPvals$R2<-MF$R2
+
+#create a new variable for the variance not explained by the model
+VPvals$Unexplained   <- 1-VPvals$R2
+
+#scale the variance explained by my explanatory variables by the R2
+#that way, all the variance explained by each variance component 
+#plus the unexplained variance will sum to 1
+count <- 0
+for (i in 1:4) {      #instead of "4" you should add the number of factors you have 
+  res<-VPvals[,i]*VPvals$R2
+  count <- count + 1
+  VPvals[count] <- res
+}
+
+
+#calculate the mean variance explained by each of my variance components
+means <- rep(NA, 4)
+count <- 0
+for (i in 1:4) {
+  mean<-mean(VPvals[,i])
+  count <- count + 1
+  means[count] <- mean
+}
+
+#the means start with the component that is on the left in the VPvals df
+means
+mean(VPvals$Unexplained)
+
+#check that the scaled variances plus the unexplained variance sum to 1
+sum(means)+mean(VPvals$Unexplained)
+
+
+
+#change format of the table so I can read it into ggplot
+VPvals<-VPvals[,-6] #remove R2 column
+VPvals<-melt(VPvals, id="compound")
+
+
+
+#arrange variance plot by variable of choice
+df <- VPvals %>% 
+  filter(variable == "Unexplained") %>% 
+  arrange(desc(value))
+VPvals$compound <- factor(VPvals$compound, levels=c("G.GER", "G.ALT", "G.LIN", "G.LID", "G.OCI", "G.CAR", "G.FAR","G.NER","G.ISO","G.PHE", "G.LEU", "G.ILE"))
+
+ggplot(VPvals, aes(x=compound, y=value, fill=variable)) + 
+  geom_bar(position="fill", stat="identity") +
+  labs(x="Compound",y="Variance proportion") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size=8)) + 
+  scale_fill_npg(name = "Source of variation",
+                 labels=c("Population (14%)",
+                          "Plant (48%)",
+                          "Flower (2%)",
+                          "Sample date (3%)",
+                          "Unexplained variance (33%)")) + 
+  scale_y_continuous(labels = scales::percent) 
+
+
+dev.copy(tiff,"plot.tiff",  width=4500, height=2200, res=600)
+dev.off()
+
+#this is figure 1 in the manuscript
+```
+
+## 2: Are populations differentiated in floral morphology, floral scent, or both types of traits?
+
+Scent only data
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#working with ER_f_mass (for now at least), and creating new variables by combining the emission rates of compounds from the same pathway.
+
+#the pathway assignments came from Rob
+
+
+
+ER_f_mass_groups <- Totals_std_ER  %>%  filter(Type=="Yes") %>% mutate(
+G.ILE=ER.2methylbutyronitrile+`ER.nitro-2-methyl-butane`+`ER.cis-2-methylbutyraldoxime`+`ER.trans-2-methylbutyraldoxime`,                                    G.LEU=ER.3methylbutyronitrile+`ER.nitro-3-methyl-butane`+`ER.cis-3-methylbutyraldoxime`+`ER.trans-3-methylbutyraldoxime`+`ER.cis-isobutyraldoxime`+`ER.trans-isobutyraldoxime`, G.PHE=ER.2phenylethanol+ER.phenylacetonitrile+ER.nitrophenylethane+ER.phenylacetaldoxime,
+G.OCI=`ER.b-myrcene`+`ER.cis-b-ocimene`+`ER.trans-b-ocimene`,
+G.GER=ER.citronellol+ER.neral+ER.geranial+ER.nerol+ER.geraniol,
+G.LIN=ER.linalool,                                      G.LID=`ER.cis-furanoid-linalool-oxide`+`ER.trans-furanoid-linalool-oxide`+`ER.pyran-lin-oxide-ketone`+`ER.cis-pyranoid-linalool-oxide`+`ER.trans-pyranoid-linalool-oxide`,                                     G.CAR=`ER.beta-caryophyllene`+`ER.alpha-humulene`+`ER.caryophyllene-oxide`+ER.farnesol,                            G.FAR=`ER.beta-farnesene`+`ER.Z-E-alpha-farnesene`+`ER.E-E-alpha-farnesene`+`ER.farnesene-epoxide`,
+                                         G.NER=ER.nerolidol,
+                                         G.ISO=ER.isophytol,
+                                         G.ALT=`ER.alpha-terpineol`)
+
+ER_f_mass_group_data <- ER_f_mass_groups %>% filter(Population!="Idaho") %>%  select(starts_with("G."))
+
+ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
+ER_f_mass_groups <- ER_f_mass_groups %>% filter(Population!="Idaho") %>% slice(.,-c(36,44))
+  
+
+groups.adonis <- adonis(ER_f_mass_group_data~Population, data=ER_f_mass_groups,permutations=999, method="bray" )
+
+groups.adonis
+
+```
+Morphology only data:
+
+In order to do multivariate analyses of the morphological variables, I had to drop leaf number and leaf length, because there isn't enough data.
+
+```{r, echo=FALSE}
+
+nectar <- function(x){(0.5516*x)+0.0506}
+
+morph_data <- file3 %>%  filter(Population!="Idaho"& Type=="Yes") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>%  drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+
+
+
+morph_names <- file3 %>% filter(Population!="Idaho"& Type=="Yes") %>% select(starts_with("M."), Population, Pop_Plant) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column)%>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+morph.adonis <- adonis(morph_data~Population, data=morph_names, permutations=999, method="bray")
+morph.adonis
+```
+
+Combined dataset:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+morph_names <- file3 %>% select(starts_with("M."), Population, Pop_Plant, Sample_ID, Type) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% filter(Type=="Yes") %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+ER_f_mass_groups <- ER_f_mass_groups %>% select(starts_with("G."), Population, Pop_Plant, Sample_ID, Type) %>% filter(Type=="Yes")
+
+All_data_names <- full_join(ER_f_mass_groups, morph_names) %>% filter(Population!="Idaho") %>%  drop_na()
+All_data <- All_data_names %>%  select(starts_with("M."), starts_with("G."))
+
+
+All.adonis <- adonis(All_data~Population, data=All_data_names,permutations=999, method="bray")
+All.adonis
+```
+
+## testing for specific traits that are associated with population differentiation 
+
+First, lmers on total scent, compound diversity, compound group diversity
+
+```{r, echo=FALSE}
+Totals_std_ER <- Totals_std_ER %>% filter(Totals_std_ER$Population!="Idaho")
+Totals_std_ER$Population<-factor(Totals_std_ER$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+total.model<-lmer(ER.Total~Population+(1|Pop_Plant), data=Totals_std_ER)
+```
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE}
+hist(resid(total.model))
+plot(predict(total.model),resid(total.model)) 
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(total.model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+aa<-summary(emmeans(total.model, pairwise~Population, type="response"))
+
+#violin plot:
+
+a_plot<-ggplot(aes(x=Population, y=ER.Total), data=Totals_std_ER)+geom_violin(scale="width", draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=aa$emmeans, size=3, color="grey34")+ylab("Total scent emission")
+```
+
+Compound diversity
+
+This is the number of compounds detected in a sample as a function of population, with plant nested within population as a random effect. So this makes use of all measured flowers.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Removing the scent samples that had no compounds detected:
+Percents_names <- Percents_wide %>% 
+  filter(Comp.2methylbutyronitrile!="NaN") 
+
+#Making a P/A matrix of just the compounds
+P_A<-Percents_names %>% select(starts_with("Comp."))
+P_A[P_A>0]<-1
+
+#Calculating the total number of compounds in each sample
+P_A_totals <- P_A %>%  mutate(Total=rowSums(.)) %>% cbind(., Population=Percents_names$Population, Pop_Plant=Percents_names$Pop_Plant, Type=Percents_names$Type) %>% filter(Population != "Idaho")
+
+#Ordering the levels of Population according to latitude
+
+P_A_totals$Population<-factor(P_A_totals$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+#Modeling the total number of compounds in each sample:
+totals.model<-lmer(Total~Population+(1|Pop_Plant), data=P_A_totals)
+```
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+hist(resid(totals.model))
+plot(predict(totals.model),resid(totals.model))
+```
+
+ANOVA:
+```{r, echo=FALSE}
+anova(totals.model)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+bb<-summary(emmeans(totals.model, pairwise~Population, type="response"))
+
+b_plot<-ggplot(aes(x=Population, y=Total), data=P_A_totals)+geom_violin(scale="width", draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=bb$emmeans, size=3, color="grey34")+ylab("Number of compounds")
+
+##this is figure 2 (B) in the manuscript
+```
+
+```{r}
+ER_f_mass_groups <- Totals_std_ER  %>% filter(Type=="Yes") %>%    mutate(
+G.ILE=ER.2methylbutyronitrile+`ER.nitro-2-methyl-butane`+`ER.cis-2-methylbutyraldoxime`+`ER.trans-2-methylbutyraldoxime`,                                    G.LEU=ER.3methylbutyronitrile+`ER.nitro-3-methyl-butane`+`ER.cis-3-methylbutyraldoxime`+`ER.trans-3-methylbutyraldoxime`+`ER.cis-isobutyraldoxime`+`ER.trans-isobutyraldoxime`, G.PHE=ER.2phenylethanol+ER.phenylacetonitrile+ER.nitrophenylethane+ER.phenylacetaldoxime,
+G.OCI=`ER.b-myrcene`+`ER.cis-b-ocimene`+`ER.trans-b-ocimene`,
+G.GER=ER.citronellol+ER.neral+ER.geranial+ER.nerol+ER.geraniol,
+G.LIN=ER.linalool,                                      G.LID=`ER.cis-furanoid-linalool-oxide`+`ER.trans-furanoid-linalool-oxide`+`ER.pyran-lin-oxide-ketone`+`ER.cis-pyranoid-linalool-oxide`+`ER.trans-pyranoid-linalool-oxide`,                                     G.CAR=`ER.beta-caryophyllene`+`ER.alpha-humulene`+`ER.caryophyllene-oxide`+ER.farnesol,                            G.FAR=`ER.beta-farnesene`+`ER.Z-E-alpha-farnesene`+`ER.E-E-alpha-farnesene`+`ER.farnesene-epoxide`,
+                                         G.NER=ER.nerolidol,
+                                         G.ISO=ER.isophytol,
+                                         G.ALT=`ER.alpha-terpineol`)
+
+ER_f_mass_group_data <- ER_f_mass_groups %>% filter(Population!="Idaho") %>%  select(starts_with("G."))
+
+ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
+ER_f_mass_groups <- ER_f_mass_groups %>% filter(Population!="Idaho") %>% slice(.,-c(36,44))
+```
+
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+scents.cap <- capscale(ER_f_mass_group_data ~ Population, ER_f_mass_groups, dist="bray") 
+summary(scents.cap, display=NULL)
+```
+
+Plotting the scents capscale (Figure S5A)
+
+```{r}
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+Percent_names_scores<-cbind(ER_f_mass_groups, scores)
+arrows.a<-as.data.frame(scores(scents.cap, display="species"))
+arrows.a<-arrows.a[c(1,2,4,6,9,12),]
+
+figure_s5a<-ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") +ggtitle("Scent data")+geom_segment(aes(x=0, y=0, xend=CAP1*1.25, yend=CAP2*1.25), data=arrows.a, arrow = arrow(length = unit(0.25, "cm")))+geom_text(aes(x=(CAP1*1.25)+0.1, y=(CAP2*1.25)+0.1, label=rownames(arrows.a)), data=arrows.a)
+```
+
+
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+scores<-as.data.frame(scores(scents.cap, display="sites"))
+
+
+Percent_names_scores<-cbind(ER_f_mass_group_data, scores)
+
+cors <- as.data.frame(sapply(1:12,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:12,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:12,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:12,function(x) cors2[,x]$p.value)
+pvals.a<-round(p.adjust(pvals, method="BH"), 4)
+pvals.a2<-round(p.adjust(pvals2, method="BH"), 4)
+
+
+co1<-sapply(1:12,function(x) round(cors[,x]$estimate,4))
+co2<-sapply(1:12,function(x) round(cors2[,x]$estimate,4))
+
+
+compounds<-colnames(ER_f_mass_group_data)
+
+c.table<-as.data.frame(cbind(compounds,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+
+Group data for all flowers from a plant:
+
+```{r}
+ER_f_mass_groups <- Totals_std_ER  %>%     mutate(
+G.ILE=ER.2methylbutyronitrile+`ER.nitro-2-methyl-butane`+`ER.cis-2-methylbutyraldoxime`+`ER.trans-2-methylbutyraldoxime`,                                    G.LEU=ER.3methylbutyronitrile+`ER.nitro-3-methyl-butane`+`ER.cis-3-methylbutyraldoxime`+`ER.trans-3-methylbutyraldoxime`+`ER.cis-isobutyraldoxime`+`ER.trans-isobutyraldoxime`, G.PHE=ER.2phenylethanol+ER.phenylacetonitrile+ER.nitrophenylethane+ER.phenylacetaldoxime,
+G.OCI=`ER.b-myrcene`+`ER.cis-b-ocimene`+`ER.trans-b-ocimene`,
+G.GER=ER.citronellol+ER.neral+ER.geranial+ER.nerol+ER.geraniol,
+G.LIN=ER.linalool,                                      G.LID=`ER.cis-furanoid-linalool-oxide`+`ER.trans-furanoid-linalool-oxide`+`ER.pyran-lin-oxide-ketone`+`ER.cis-pyranoid-linalool-oxide`+`ER.trans-pyranoid-linalool-oxide`,                                     G.CAR=`ER.beta-caryophyllene`+`ER.alpha-humulene`+`ER.caryophyllene-oxide`+ER.farnesol,                            G.FAR=`ER.beta-farnesene`+`ER.Z-E-alpha-farnesene`+`ER.E-E-alpha-farnesene`+`ER.farnesene-epoxide`,
+                                         G.NER=ER.nerolidol,
+                                         G.ISO=ER.isophytol,
+                                         G.ALT=`ER.alpha-terpineol`)
+
+ER_f_mass_group_data <- ER_f_mass_groups %>% filter(Population!="Idaho") %>%  select(starts_with("G."))
+
+ER_f_mass_group_data <- ER_f_mass_group_data %>% slice(.,-c(36,44))
+ER_f_mass_groups <- ER_f_mass_groups %>% filter(Population!="Idaho") %>% slice(.,-c(36,44))
+```
+
+
+**ILE group**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.ILE~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+**The differences between populations are not significant after controlling for doing four tests.**
+
+**LEU group**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.LEU~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+cc<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+c_plot<-ggplot(aes(x=Population, y=G.LEU), data=ER_f_mass_groups)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=cc$emmeans,size=3, color="grey34")+ylab("Emission rate")+ggtitle("LEU compounds")
+```
+
+**linalool**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.LIN~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+Untransformed residuals look okay, square root transformation (not shown) is comparable and doesn't affect the results.
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+dd<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+d_plot<-ggplot(aes(x=Population, y=G.LIN), data=ER_f_mass_groups)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=dd$emmeans,size=3, color="grey34")+ylab("Emission rate")+ggtitle("linalool")
+```
+
+*Interpretation*: Inyo and Arizona emit more linalool than Logan. 
+
+**isophytol**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.ISO~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ee<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+e_plot<-ggplot(aes(x=Population, y=G.ISO), data=ER_f_mass_groups)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=ee$emmeans, size=3, color="grey34")+ylab("Emission rate")+ggtitle("isophytol")
+
+blank_plot<-plot.new()
+
+ggarrange(a_plot,b_plot,blank_plot, c_plot,d_plot,e_plot, nrow=2, ncol=3)
+#this is figure 3 in the MS
+```
+
+**FAR group--correlated with CAP2**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c( "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.FAR~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+**The differences between populations are not significant after controlling for doing six tests.**
+
+**OCI group--correlated with CAP2**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+ER_f_mass_groups$Population<-factor(ER_f_mass_groups$Population, levels=c( "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(G.OCI~Population+(1|Pop_Plant), data=ER_f_mass_groups)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+No differences across populations.
+
+### Morphology
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+
+morph_data <- file3 %>%  filter(Population!="Idaho"& Type=="Yes") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>%  drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+
+
+
+morph_names <- file3 %>% filter(Population!="Idaho"& Type=="Yes") %>% select(starts_with("M."), Population, Pop_Plant) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column)%>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+
+morph.cap <- capscale(morph_data ~ Population, morph_names, dist="bray") 
+summary(morph.cap, display=NULL)
+```
+
+Plotting the capscale (Figure S5B)
+
+```{r}
+scores<-as.data.frame(scores(morph.cap, display="sites"))
+Percent_names_scores<-cbind(morph_names, scores)
+arrows.b<-as.data.frame(scores(morph.cap, display="species"))
+arrows.b<-arrows.b[-5,]
+
+figure_s5b<-ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed")+ggtitle("Morphology data") +geom_segment(aes(x=0, y=0, xend=CAP1*1.25, yend=CAP2*1.25), data=arrows.b, arrow = arrow(length = unit(0.25, "cm")))+geom_text(aes(x=(CAP1*1.25)+0.1, y=(CAP2*1.25)+0.1, label=rownames(arrows.b)), data=arrows.b)
+
+ggarrange(figure_s5a,figure_s5b, nrow=2, ncol=1, common.legend = TRUE, legend="bottom")
+```
+
+
+Checking to see which traits are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+scores<-as.data.frame(scores(morph.cap, display="sites"))
+
+
+Percent_names_scores<-cbind(morph_data, scores)
+
+cors <- as.data.frame(sapply(1:7,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:7,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:7,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:7,function(x) cors2[,x]$p.value)
+pvals.a<-round(p.adjust(pvals, method="BH"),7)
+pvals.a2<-round(p.adjust(pvals2, method="BH"),7)
+
+
+co1<-sapply(1:7,function(x) round(cors[,x]$estimate,7))
+co2<-sapply(1:7,function(x) round(cors2[,x]$estimate,7))
+
+
+variables<-colnames(morph_data)
+
+c.table<-as.data.frame(cbind(variables,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+
+From this, all variables except for pedicel length and Corolla D1 are correlated with CAP1, and all of them are positively correlated.
+
+The only variables correlated with CAP2 are hypanthium length (negative) and pedicel length (positive).
+
+### Floral morphology, univariate analyses
+
+There were 6 variables correlated with CAP1 and/or CAP2: Corolla_D2, Tube_Flare, Hypanthium_Length, Pedicel_Length, Nectar_Volume, and Percent_Sugar.  Each variable is modeled as a function of population, with plant nested within population as a random effect. This uses data from all measured flowers where all variables were measured on the flower.
+
+**Corolla D2**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_data <- file3 %>%  filter(Population!="Idaho") %>% select(starts_with("M.")) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% drop_na() %>% mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column)%>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+morph_names <- file3 %>% filter(Population!="Idaho") %>% select(starts_with("M."), Population, Pop_Plant) %>% select(-"M.Leaf_Number", -"M.Leaf_Length")  %>% drop_na() %>%  mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column)%>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+```
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+aa<-summary(emmeans(model, pairwise~Population, type="response"))
+
+aa_plot<-ggplot(aes(x=Population, y=M.Corolla_Mean), data=morph_names)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=aa$emmeans, size=3, color="grey34")+ylab("Mean corolla width (mm)")
+```
+
+*Interpretation*: Zion has a significantly larger corolla dimension 2 relative to all other populations. Inyo and Arizona have the next largest corolla D2, which is larger than Logan. 
+
+**Tube Flare**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Tube_Flare~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+bb<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+bb_plot<-ggplot(aes(x=Population, y=M.Tube_Flare), data=morph_names)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=bb$emmeans, size=3, color="grey34")+ylab("Tube flare (mm)")
+```
+
+*Interpretation*: Zion is equal to Inyo, but greater than Arizona or Logan. Inyo is equal to Arizona, and greater than Logan. Arizona and Logan are equivalent.
+
+
+
+
+**Hypanthium Length**:
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c( "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Hypanthium_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+It looks like there is one outlier: rm2-28 (Arizona) the fifth flower, measured on 6/19. It has a length of 36.48, but the other four flowers from the plant all have lengths over 100. I suspect that the 100 digit may have been dropped from this measurement. Can we either resolve this from the paper datasheet or remove this outlier?
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+cc<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+cc_plot<-ggplot(aes(x=Population, y=M.Hypanthium_Length), data=morph_names)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=cc$emmeans, size=3, color="grey34")+ylab("Hypanthium length (mm)")
+
+```
+
+*Interpretation*: Logan is lower than the other three populations, which are comparable.
+
+**Pedicel length**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c("Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Pedicel_Length~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+dd<-summary(emmeans(model, pairwise~Population, type="response"))
+
+
+dd_plot<-ggplot(aes(x=Population, y=M.Pedicel_Length), data=morph_names)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=dd$emmeans, size=3, color="grey34")+ylab("Pedicel length (mm)")
+
+```
+
+*Interpretation*: The only significant contrasts are that Logan and Zion have larger pedicel lengths than Arizona.
+
+**Nectar column**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c( "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Nectar_Vol~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6)
+```
+
+Estimated marginal means & contrasts across populations:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ee<-summary(emmeans(model, pairwise~Population, type="response"))
+
+ee_plot<-ggplot(aes(x=Population, y=M.Nectar_Vol), data=morph_names)+geom_violin(scale="width",draw_quantiles = c(0.25, 0.5, 0.75)) +geom_point(aes(x=Population, y=emmean), data=ee$emmeans, size=3, color="grey34")+ylab("Nectar volume (ul)")
+
+
+ggarrange(aa_plot,bb_plot,cc_plot,dd_plot,ee_plot)
+#This is figure 4 in the manuscript
+```
+
+*Interpretation*: Logan is lower than Arizona and Inyo.
+
+**Percent sugar**:
+
+*Note*: there are some potential outliers/zeros values that maybe should be NAs in the dataset right now.
+
+Diagnostics for the model residuals:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph_names$Population<-factor(morph_names$Population, levels=c( "Logan", "Zion", "Inyo", "Arizona"))
+
+model<-lmer(M.Percent_Sugar~Population+(1|Pop_Plant), data=morph_names)
+hist(resid(model))
+plot(predict(model),resid(model))
+```
+
+
+ANOVA:
+```{r, echo=FALSE}
+a<-anova(model)
+a
+p.adjust(a$`Pr(>F)`, method="fdr", n=6
+         )
+```
+
+Differences across populations are not significant.
+
+Combined dataset:
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+morph_names <- file3 %>% select(starts_with("M."), Population, Pop_Plant, Sample_ID, Type) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% filter(Type=="Yes") %>% drop_na() %>%  mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+ER_f_mass_groups <- ER_f_mass_groups %>% select(starts_with("G."), Population, Pop_Plant, Sample_ID, Type) %>% filter(Type=="Yes")
+
+All_data_names <- full_join(ER_f_mass_groups, morph_names) %>% filter(Population!="Idaho") %>%  drop_na()
+All_data <- All_data_names %>%  select(starts_with("M."), starts_with("G."))
+
+All_data_names <- full_join(ER_f_mass_groups, morph_names)  %>%  drop_na()
+All_data <- All_data_names %>%  select(starts_with("M."), starts_with("G."))
+
+Running a constrained analysis of principle coordinates:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+morph.cap2 <- capscale(All_data ~ Population, All_data_names, dist="bray") 
+summary(morph.cap2, display=NULL)
+```
+The constrained portion explains about 26% of overall distance. CAP1 explains about 24% and CAP2 expalins about 1.5% of overall distance.
+
+Plotting the capscale (Figure 3B):
+
+```{r}
+scores<-as.data.frame(scores(morph.cap2, display="sites"))
+Percent_names_scores<-cbind(All_data_names, scores)
+arrows.c<-as.data.frame(scores(morph.cap2, display="species"))
+arrows.c<-arrows.c[c(2,8,9,13),]
+
+Figure_3B<-ggplot(aes(x=CAP1, y=CAP2), data=Percent_names_scores) +geom_point(aes(color=Population), size=3, shape=15) + theme_classic()+geom_hline(yintercept = 0, linetype="dashed")+ geom_vline(xintercept = 0, linetype="dashed") +geom_segment(aes(x=0, y=0, xend=CAP1*1.25, yend=CAP2*1.25), data=arrows.c, arrow = arrow(length = unit(0.25, "cm")))+geom_text(aes(x=(CAP1*1.25)+0.1, y=(CAP2*1.25)+0.1, label=rownames(arrows.c)), data=arrows.c)
+```
+
+
+Checking to see which compound group(s) are significantly correlated with CAP1 and/or CAP2.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+scores<-as.data.frame(scores(morph.cap2, display="sites"))
+
+
+Percent_names_scores<-cbind(All_data, scores)
+
+cors <- as.data.frame(sapply(1:19,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP1)))
+
+cors2 <- as.data.frame(sapply(1:19,function(x) cor.test(Percent_names_scores[,x],Percent_names_scores$CAP2)))
+pvals<-sapply(1:19,function(x) cors[,x]$p.value)
+pvals2<-sapply(1:19,function(x) cors2[,x]$p.value)
+pvals.a<-round(p.adjust(pvals, method="BH"),4)
+pvals.a2<-round(p.adjust(pvals2, method="BH"),4)
+
+
+co1<-sapply(1:19,function(x) round(cors[,x]$estimate,4))
+co2<-sapply(1:19,function(x) round(cors2[,x]$estimate,4))
+
+
+variables<-colnames(All_data)
+
+c.table<-as.data.frame(cbind(variables,cor1=co1,p1=pvals.a,cor2=co2, p2=pvals.a2))
+c.table$p1<-as.numeric(as.character(c.table$p1))
+c.table$p2<-as.numeric(as.character(c.table$p2))
+c.table$sig1<-rep("No", times=dim(c.table)[1])
+c.table$sig2<-rep("No", times=dim(c.table)[1])
+c.table$sig1<-ifelse(c.table$p1 < 0.01, "Yes", c.table$sig1)
+c.table$sig2<-ifelse(c.table$p2 < 0.01, "Yes", c.table$sig2)
+rownames(c.table)<-c()
+
+kable(c.table)
+
+```
+
+Correlated with CAP 1: Hypanthium Length (+), ILE (+), LEU (+), LIN (+)
+
+
+Correlated with CAP 2: LEU (-), LIN (-)
+
+## Figure S2
+
+```{r}
+morph_names_leaf <- file3 %>% filter(Population!="Idaho" & Population!="Zion") %>% select(starts_with("M."), Population, Pop_Plant) %>% select(M.Hypanthium_Length, M.Leaf_Length, Population, Pop_Plant) %>%   drop_na() 
+
+model<-lmer(M.Hypanthium_Length~M.Leaf_Length*Population+(1|Pop_Plant), data=morph_names_leaf)
+
+lines<-morph_names_leaf %>% filter(Population=="Inyo")
+
+
+ggplot(aes(x=M.Leaf_Length, y=M.Hypanthium_Length), data=morph_names_leaf)+geom_point()+geom_smooth(data=lines, method="lm")+facet_wrap(~Population) + xlab("Leaf length (mm)") +ylab("Hypanthium length (mm)")
+```
+
+
+## Figure S6
+
+```{r}
+morph_names <- file3 %>% select(starts_with("M."), Population, Pop_Plant, Sample_ID, Type) %>% select(-"M.Leaf_Number", -"M.Leaf_Length") %>% mutate(M.Herkogamy=M.Stamen_Length-M.Style_Length) %>% select(-M.Stamen_Length, -M.Style_Length) %>% filter(Population=="Arizona") %>% drop_na() %>%  mutate(M.Nectar_Vol=nectar(M.Nectar_Column)) %>% select(-M.Nectar_Column) %>% mutate(M.Corolla_Mean = (M.Corolla_D1+M.Corolla_D2)/2) %>% select(-M.Corolla_D1, -M.Corolla_D2)
+
+ER_f_mass_groups <- ER_f_mass_groups %>% select(starts_with("G."), Population, Pop_Plant, Sample_ID, Type) %>% filter(Population=="Arizona")
+
+keep<-ER_f_mass_groups %>% group_by(Pop_Plant) %>% summarize(N=length(Type)) %>% filter(N>=4)
+
+ER_f_mass_AZ <- ER_f_mass_groups %>% filter(Pop_Plant %in% keep$Pop_Plant) %>% slice(.,-c(33,38:41)) %>% mutate(Fl_Number=c(rep(1:4, 9))) 
+
+ER_f_mass_AZ_data <- ER_f_mass_AZ %>% select(starts_with("G."))
+
+nmds_AZ <- metaMDS(ER_f_mass_AZ_data)
+
+
+ nmds.spp.fit <- envfit(nmds_AZ, ER_f_mass_AZ_data, permutations = 999) #this gives us which compounds are significantly contributing to the separation
+ 
+ #colvec <- c("tan1", "plum3", "lightskyblue3", "hotpink1")
+ colvec <- rainbow(9)
+ 
+ shapes <- c("1", "2", "3","4")
+ 
+ ordiplot(nmds_AZ, type = "n", xlim=c(-1,1.5), ylim=c(-1, 1))
+ ordiellipse(nmds_AZ, groups = as.factor(ER_f_mass_AZ$Pop_Plant), draw = "polygon", lty = 1, col = colvec, kind="se", conf=0.95, alpha=0.5, label=FALSE)
+ orditorp(nmds_AZ, display="sites", labels=F, pch=shapes[as.factor(ER_f_mass_AZ$Fl_Number)], col=colvec[as.factor(ER_f_mass_AZ$Pop_Plant)], cex=1.25)
+ plot(nmds.spp.fit, p.max=0.01, col="black",cex=1.2)
+ legend(-2,1, legend=levels(as.factor(ER_f_mass_AZ$Pop_Plant)), col="black", pch=21, pt.bg=colvec, cex=1)
+ legend(1.2,1.45, "stress = 0.195", bty = "n", cex = 1)
+
+```
+
