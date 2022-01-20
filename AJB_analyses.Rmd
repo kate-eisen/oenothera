@@ -42,7 +42,7 @@ library(ggsci)
 ## 0.1: loading in the data on the dose-response curves for the standards, to generate the equations to use to calculate emission rates
 
 ```{r}
-standards <- read_excel("Log_standards.xlsx")
+standards <- read_csv("Log_standards.csv")
 
 eq <- function(df) summary(lm(Log_Peak ~ Log_Conc, data = df))
 
@@ -75,12 +75,12 @@ benzoate <- function(x){ exp((log(x)-8.1937426)/1.0395117)}
 ## 0.2: loading in the raw datasets:
 
 ```{r}
-file1<-readxl::read_excel("Scent_Full.xlsx", na="0")
+file1<-read_csv("Scent_Full.csv", na="0")
 file1<-file1 %>% mutate_all(~replace(.,is.na(.), 0))
 
-file2<-readxl::read_excel("Scent_Meta.xlsx")
+file2<-read_csv("Scent_Meta.csv")
 
-file3<-readxl::read_excel("Morph_Full.xlsx")
+file3<-read_csv("Morph_Full.csv")
 ```
 
 ## 0.3: reformatting scent data and converting to emission rates using external standards:
